@@ -31,7 +31,7 @@ function buildShell() {
   topbar.className = 'topbar';
   topbar.innerHTML = `
     <button class="icon-btn menu-btn" id="menuBtn" title="目录" aria-label="打开目录">☰</button>
-    <a class="brand" href="${P('index.html')}"><span class="logo">智</span><span class="b-t">人工智能导论</span><span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:0 6px;margin-left:2px">v2.1</span></a>
+    <a class="brand" href="${P('index.html')}"><span class="logo">智</span><span class="b-t">人工智能导论</span><span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:0 6px;margin-left:2px">v2.2</span></a>
     <nav class="crumbs" id="crumbs"></nav>
     <div class="topbar-actions">
       <button class="searchbox" id="searchBtn" aria-label="搜索课程">🔍 搜索课程…<kbd>⌘K</kbd></button>

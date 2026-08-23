@@ -20,7 +20,7 @@ function shell({ title, page, module: mod, depth, script, crumb }) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>v2.1 · ${title}</title>
+<title>v2.2 · ${title}</title>
 <link rel="icon" href="${FAVICON}">
 <link rel="stylesheet" href="${depth}css/site.css">
 <link rel="stylesheet" href="${depth}css/components.css">
