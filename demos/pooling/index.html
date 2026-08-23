@@ -1,0 +1,117 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>池化动画</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; align-items:center; justify-content:center; gap:36px; padding:16px; flex-wrap:wrap; overflow:auto; }
+  .grid { display:grid; gap:2px; }
+  .c { width:30px; height:30px; border-radius:4px; display:grid; place-items:center; font-family:var(--mono); font-size:10px; color:rgba(0,0,0,.55); transition:background-color .25s; }
+  .c.hot { outline:2.5px solid var(--accent); outline-offset:-1px; z-index:2; }
+  .cap { text-align:center; font-size:11.5px; color:var(--muted); margin-top:8px; }
+  .shiftwrap { width:100%; max-width:420px; }
+</style></head><body>
+<div class="demo-head"><span class="badge">互动</span><span class="t">最大池化 · 平移鲁棒性</span><span class="s">看 2×2 池化如何压缩特征图；拖动"图像偏移"，对比池化前后响应的稳定性</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div><div class="grid" id="in8" style="grid-template-columns:repeat(8,30px)"></div><div class="cap">输入特征图 8×8</div></div>
+    <div style="font-size:24px;color:var(--muted)">→</div>
+    <div><div class="grid" id="out4" style="grid-template-columns:repeat(4,30px)"></div><div class="cap">最大池化后 4×4</div></div>
+    <div class="shiftwrap">
+      <div class="ctl"><label><span>图像偏移（拖动看鲁棒性）</span><b id="sv">0</b></label><input type="range" id="shift" min="-2" max="2" step="1" value="0"></div>
+      <div class="readout" id="ro"></div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">池化方式</div>
+    <div class="tabs" id="modes"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      <b>最大池化</b>：每 2×2 取最大值——"这个区域有没有检测到"比"具体在哪"更重要。<br>
+      <b>平均池化</b>：取平均——更平滑，信息保留多一点，峰值不突出。
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      拖动偏移滑杆：输入挪 1 格，池化输出的变化远小于输入的变化——<b>微小平移不再敏感</b>。卷积管"在哪都认得"，池化管"歪一点也认得"。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { RNG, gauss } from '../_shared/demo.js';
+let mode = 'max', shift = 0;
+const BASE = (() => {
+  const rng = RNG(30);
+  const g = [];
+  for (let i = 0; i < 64; i++) g.push(Math.max(0, Math.min(1, 0.45 + Math.sin(i / 8 * 2.1) * 0.25 + gauss(rng, 0, 0.16))));
+  /* 加两个强激活点 */
+  g[3 * 8 + 5] = 0.98; g[5 * 8 + 2] = 0.92;
+  return g;
+})();
+function input() {
+  const out = new Array(64).fill(0);
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const sc = (c + shift + 8) % 8;
+    out[r * 8 + c] = BASE[r * 8 + sc];
+  }
+  return out;
+}
+function pool(inp) {
+  const out = [];
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+    const vals = [inp[r * 2 * 8 + c * 2], inp[r * 2 * 8 + c * 2 + 1], inp[(r * 2 + 1) * 8 + c * 2], inp[(r * 2 + 1) * 8 + c * 2 + 1]];
+    out.push(mode === 'max' ? Math.max(...vals) : vals.reduce((a, b) => a + b, 0) / 4);
+  }
+  return out;
+}
+const colorOf = v => `hsl(${(1 - v) * 220}, 55%, ${14 + v * 64}%)`;
+const in8 = document.getElementById('in8'), out4 = document.getElementById('out4');
+/* cell 只造一次，之后只更新颜色/文字——这样 CSS 的 background-color transition 才有意义。
+   之前每次 render 都 innerHTML='' 整个重建，浏览器等于每帧都在"新元素上直接画上最终颜色"，
+   没有变化过程可过渡，写了 transition 也是摆设 */
+function makeCells(container, n) {
+  const cells = [];
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement('div');
+    d.className = 'c';
+    container.append(d);
+    cells.push(d);
+  }
+  return cells;
+}
+const inCells = makeCells(in8, 64), outCells = makeCells(out4, 16);
+function paint(cells, vals) {
+  cells.forEach((d, i) => { d.style.background = colorOf(vals[i]); d.textContent = vals[i].toFixed(1); });
+}
+function render() {
+  const inp = input();
+  paint(inCells, inp);
+  const out = pool(inp);
+  paint(outCells, out);
+  /* 鲁棒性指标：输入 vs 输出相对 shift=0 各自的变化量——这是本演示真正要证明的对比，
+     之前这里只算了输出变化量，输入变化量被写成常量 0 且从没显示出来，等于承诺了
+     "对比"却只给了一半数据 */
+  const base = input0();
+  const inpDiff = inp.reduce((a, v, i) => a + Math.abs(v - base[i]), 0);
+  const ref = pool(base);
+  const outDiff = out.reduce((a, v, i) => a + Math.abs(v - ref[i]), 0);
+  const ratio = inpDiff > 0 ? (outDiff / inpDiff * 100).toFixed(0) : '0';
+  document.getElementById('ro').innerHTML = `偏移 <b>${shift}</b> 格\n输入总变化量 <b>${inpDiff.toFixed(2)}</b>　输出总变化量 <b>${outDiff.toFixed(2)}</b>\n输出变化只有输入的 <b>${ratio}%</b>${shift !== 0 ? ' → 平移鲁棒' : ''}`;
+}
+function input0() { const s = shift; shift = 0; const r = input(); shift = s; return r; }
+document.getElementById('shift').addEventListener('input', e => {
+  shift = +e.target.value;
+  document.getElementById('sv').textContent = shift;
+  render();
+});
+const modes = document.getElementById('modes');
+[['max', '最大池化'], ['avg', '平均池化']].forEach(([k, n], i) => {
+  const b = document.createElement('button');
+  b.textContent = n;
+  if (!i) b.classList.add('on');
+  b.addEventListener('click', () => {
+    modes.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    mode = k;
+    render();
+  });
+  modes.append(b);
+});
+render();
+</script>
+</body></html>

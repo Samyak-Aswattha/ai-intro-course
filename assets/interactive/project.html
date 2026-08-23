@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>社会现实导向 AI 项目库（本科《人工智能导论》）</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --card:#121922; --muted:#9fb0c3; --text:#e9f0f8; --accent:#63b3ed; --chip:#1a2430;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans SC","PingFang SC","Hiragino Sans GB",sans-serif;
+      color:var(--text); background:radial-gradient(1200px 800px at 20% -10%, #16324a 0%, #0b0f14 45%, #0b0f14 100%) fixed;
+    }
+    header{
+      padding:48px 20px 28px; text-align:center;
+    }
+    h1{margin:0; font-weight:800; letter-spacing:0.5px; font-size:clamp(24px,4vw,40px)}
+    .subtitle{color:var(--muted); margin-top:10px}
+    .wrap{max-width:1200px; margin:0 auto; padding:0 18px 64px}
+    .grid{
+      display:grid; gap:22px;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    }
+    .card{
+      background:linear-gradient(180deg, #162130, #111923); border:1px solid #1c2a3a; border-radius:18px; overflow:hidden;
+      box-shadow:0 10px 24px rgba(0,0,0,.35);
+      display:flex; flex-direction:column;
+    }
+    .media{display:grid; grid-template-columns:1fr 1fr; gap:4px; background:#0a0f15}
+    .media img{width:100%; height:180px; object-fit:cover; display:block; background:#0a0f15}
+    .caption{
+      grid-column:1 / -1; padding:8px 10px; font-size:12px; color:#b8c7d8; background:#0d141c; border-top:1px solid #172433
+    }
+    .body{padding:16px 16px 18px}
+    .chip{display:inline-block; background:var(--chip); color:#cfe3f8; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #213142; margin-right:6px}
+    h2{margin:10px 0 8px; font-size:18px}
+    .meta{color:#bcd0e5; font-size:13px; margin:4px 0 10px}
+    ul{margin:8px 0 0 18px; padding:0}
+    li{margin:6px 0}
+    .pill{display:inline-block; padding:2px 8px; border-radius:999px; background:#0f1520; border:1px dashed #213142; color:#b8c7d8; font-size:12px; margin:6px 6px 0 0}
+    footer{
+      margin-top:28px; padding:18px; border-top:1px solid #213142; color:#c9d8e8; background:linear-gradient(180deg,#0d141d,#0b1119)
+    }
+    a{color:#9ad1ff; text-decoration:none}
+    a:hover{text-decoration:underline}
+    .small{font-size:12px; color:#9fb0c3}
+    .badge{font-size:11px; padding:2px 6px; border-radius:6px; border:1px solid #20425b; background:#0f1a24; color:#a9c7de}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>社会现实导向 AI 项目库</h1>
+    <div class="subtitle">适配 48 学时导论课 · 含 8 学时实践 | 校内大模型优先接入 · 强伦理与合规</div>
+  </header>
+
+  <div class="wrap">
+    <div class="grid">
+
+      <!-- 1 心理陪伴与校园心理健康 -->
+      <article class="card">
+        <div class="media">
+          <img alt="心理健康图标（Noun Project, CC0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Mental%20Health%20-%20The%20Noun%20Project.svg">
+          <img alt="良好心理健康图标（Noun Project, CC BY 4.0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Good_mental_health_2686188.svg">
+          <div class="caption">
+            图：Mental Health 图标（CC0）与 Good mental health 图标（Victoruler，CC BY 4.0）
+          </div>
+        </div>
+        <div class="body">
+          <span class="chip">项目 01</span> <span class="badge">校园服务</span>
+          <h2>AI 心理陪伴助手（风险提示与转介）</h2>
+          <div class="meta">目标：非治疗、非诊断，做<span class="pill">情绪识别</span><span class="pill">危机话语识别</span><span class="pill">校内转介地图</span></div>
+          <ul>
+            <li><b>数据与工具</b>：校内大模型 + 中文公开心理健康话语规范；语料需去标识化。</li>
+            <li><b>功能</b>：匿名谈心、识别高危关键词（如“自伤”）、推送校心理中心与值班热线。</li>
+            <li><b>评估</b>：召回率优先，误报成本可接受；人工复核闭环。</li>
+            <li><b>伦理</b>：强制<span class="pill">AIGC 内容标识</span>，隐私与知情同意；不输出医疗建议。</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- 2 社会敏感内容识别与叙事观测 -->
+      <article class="card">
+        <div class="media">
+          <img alt="社交媒体图标拼贴（Ibrahim.ID，CC BY 4.0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Social_media_collection_2020s.png">
+          <img alt="社交媒体平台拼图（Today Testing，CC BY-SA 4.0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Social_Media_Platforms.jpg">
+          <div class="caption">图：社交媒体图标拼贴（CC BY 4.0）与平台拼图（CC BY-SA 4.0）</div>
+        </div>
+        <div class="body">
+          <span class="chip">项目 02</span> <span class="badge">公共舆论与语用</span>
+          <h2>社会敏感内容识别与叙事观测</h2>
+          <div class="meta">目标：将<span class="pill">“高风险言语行为”</span>与<span class="pill">“正常批评”</span>区分，做小样本可解释分类</div>
+          <ul>
+            <li><b>数据</b>：公开新闻评论与问答社区样本（经清洗、脱敏）；不抓取私域。</li>
+            <li><b>方法</b>：少样本学习 + 规则库；标注“语境与语气”。</li>
+            <li><b>评估</b>：跨域迁移性能、误伤率（对正常表达）。</li>
+            <li><b>治理</b>：输出必须<span class="pill">免责声明与可申诉</span>；严格区分“风险提示”与“定性定责”。</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- 3 环境监测与公民科学 -->
+      <article class="card">
+        <div class="media">
+          <img alt="自动空气质量监测站（Globetrotter19，CC BY-SA 3.0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Automatic_air_quality_monitoring_station%2C_detail%2C_2020_Sz%C3%A1zhalombatta.jpg">
+          <img alt="空气监测传感器（Famartin，CC BY-SA 4.0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/2025-06-02_14_47_18_Sensor_on_the_New_Jersey_Department_of_Environmental_Protection_Air_Monitoring_Station_in_Raritan_Township%2C_Hunterdon_County%2C_New_Jersey.jpg">
+          <div class="caption">图：环境监测站细节（CC BY-SA 3.0）与监测传感器（CC BY-SA 4.0）</div>
+        </div>
+        <div class="body">
+          <span class="chip">项目 03</span> <span class="badge">环境与城市</span>
+          <h2>城市微环境监测与可视化</h2>
+          <div class="meta">目标：联动<span class="pill">低成本传感器</span><span class="pill">校园/社区地图</span><span class="pill">健康提示卡片</span></div>
+          <ul>
+            <li><b>方案</b>：采集 PM2.5/噪声/温湿度；瓦片地图热力层 + 文本生成健康建议。</li>
+            <li><b>评估</b>：与气象/官方监测对比误差；设备校准与漂移纠正。</li>
+            <li><b>伦理</b>：避免可识别轨迹；公开数据采用开源协议（注明用途）。</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- 4 老年友好型助教/助医 -->
+      <article class="card">
+        <div class="media">
+          <img alt="上海社区老年太极（CC BY 2.0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Elderly_Shanghai_woman_practices_tai_chi.jpg">
+          <img alt="老年手机（Kārlis Dambrāns，CC BY 2.0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Doro_phone_for_seniors_(16103442603).jpg">
+          <div class="caption">图：社区老年生活与适老设备（均 CC BY 2.0）</div>
+        </div>
+        <div class="body">
+          <span class="chip">项目 04</span> <span class="badge">适老化与数字鸿沟</span>
+          <h2>老年友好型“就医与政务”对话助手</h2>
+          <div class="meta">目标：<span class="pill">流程分步详解</span><span class="pill">表格/凭证智能填报</span><span class="pill">电话脚本与反诈提示</span></div>
+          <ul>
+            <li><b>设计</b>：语速/字号/对比度可调；“读给我听”一键朗读。</li>
+            <li><b>数据</b>：基于地方政务/医院公开指南 + 校内知识库抽取。</li>
+            <li><b>评估</b>：任务完成率、老年可用性（SUS）与跌倒式错误。</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- 5 算法公平性与偏见审计 -->
+      <article class="card">
+        <div class="media">
+          <img alt="正义天平（Openclipart, CC0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Johnny-automatic-scales-of-justice.svg">
+          <img alt="Cognitive Bias Codex（CC BY-SA 4.0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Cognitive_bias_codex_en_uk.svg">
+          <div class="caption">图：正义天平（CC0）与《认知偏见图谱》（CC BY-SA 4.0）</div>
+        </div>
+        <div class="body">
+          <span class="chip">项目 05</span> <span class="badge">治理与合规</span>
+          <h2>算法公平性体检（校园场景）</h2>
+          <div class="meta">目标：对<span class="pill">录取/奖助分配模拟</span><span class="pill">内容过滤</span>等环节做偏见审计与可解释报告</div>
+          <ul>
+            <li><b>方法</b>：分组性能分析（TPR/FPR）、Shapley/SHAP 解释、对抗测试。</li>
+            <li><b>输出</b>：可视化体检报告 + 改进建议；必要时引入人审规则。</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- 6 灾害信息模拟与韧性 -->
+      <article class="card">
+        <div class="media">
+          <img alt="洪灾撤离（Louisiana GOHSEP，CC BY-SA 2.0）" src="https://commons.wikimedia.org/wiki/Special:FilePath/Hurricane_Isaac_Flood_Evacuation_LaPlace_LDWF.jpg">
+          <img alt="占位图" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='180'%3E%3Crect width='100%25' height='100%25' fill='%230b1116'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%235a6c7f' font-family='system-ui' font-size='14'%3E可追加本地应急演练照片%3C/text%3E%3C/svg%3E">
+          <div class="caption">图：洪灾撤离场景（CC BY-SA 2.0）；右侧可替换为校内应急演练照片</div>
+        </div>
+        <div class="body">
+          <span class="chip">项目 06</span> <span class="badge">公共安全</span>
+          <h2>灾害信息模拟（地震/暴雨/台风）</h2>
+          <div class="meta">目标：构建<span class="pill">多渠道告警话术</span><span class="pill">避险路线草图</span><span class="pill">物资清单生成</span></div>
+          <ul>
+            <li><b>数据</b>：历史灾情报道与地方应急预案；避免个人地理轨迹。</li>
+            <li><b>评估</b>：信息准确度、可执行性、响应时效（模拟）。</li>
+          </ul>
+        </div>
+      </article>
+
+    </div>
+
+    <footer>
+      <p class="small"><b>课程提示：</b>所有原型须优先接入<span class="pill">校内自研大模型</span>；对外展示时必须<span class="pill">标注 AIGC</span>，并保留人工复核与责任告知。</p>
+      <p class="small"><b>图像来源与许可：</b>页面配图均来自 Wikimedia Commons 或 CC0/CC BY/CC BY-SA 许可资源；每幅图下已附作者与许可简称。课堂使用请保留署名与许可链接。</p>
+    </footer>
+  </div>
+</body>
+</html>

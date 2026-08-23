@@ -1,0 +1,84 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>Agent 工作流模拟器</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:14px; gap:10px; overflow-y:auto; }
+  .goal { padding:12px 16px; border:1.5px solid var(--c3); border-radius:12px; background:var(--surface2); font-size:14px; }
+  .goal b { color:var(--c3); }
+  .steps3 { display:flex; flex-direction:column; gap:8px; }
+  .astep { border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:12px 14px; transition:all .3s; opacity:.45; }
+  .astep.active { opacity:1; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .astep.done { opacity:.8; }
+  .astep .head { display:flex; gap:8px; align-items:center; font-size:13.5px; font-weight:700; }
+  .astep .head .icon { font-size:16px; }
+  .astep .tool { font-family:var(--mono); font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:6px 10px; margin:8px 0; color:var(--c3); }
+  .astep .think { font-size:12.5px; color:var(--muted); line-height:1.7; margin-top:6px; }
+  .astep .think b { color:var(--accent); }
+  .observe { font-size:12px; color:var(--ok); margin-top:4px; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">Agent 工作流模拟器</span><span class="s">观察"规划 → 行动 → 观察 → 反思"的完整循环；拖慢速度看清每一步，或篡改它的计划看执行如何偏航</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="goal">🎯 任务：<b id="goalTxt">为校园公众号写一篇《AI 与诗》短文</b></div>
+    <div class="steps3" id="steps"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">运行</div>
+    <div class="btn-row">
+      <button class="btn sm" id="run">执行任务 ▶</button>
+      <button class="btn sm ghost" id="step">单步 ⏭</button>
+      <button class="btn sm ghost" id="reset">重置</button>
+    </div>
+    <div class="ctl"><label><span>速度</span><b id="spv">1.0×</b></label><input type="range" id="spd" min="1" max="20" value="10"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="readout" id="ro"></div>
+  </div>
+</div>
+<script type="module">
+import { brkSwitch } from '../_shared/demo.js';
+const PLAN = [
+  { icon: '📋', name: '规划：拆解任务', think: '目标是一篇 800 字公众号短文，受众是大学生。拆成：查资料 → 定观点 → 写初稿 → 自查 → 交付。', tool: null },
+  { icon: '🔍', name: '行动：调用搜索工具', think: '先搜"AI 写诗 争议 案例"，需要具体例子支撑观点。', tool: 'search("AI 写诗 争议 案例")', obs: '✓ 返回 12 条结果：机器人诗集出版、盲测骗过教授、版权纠纷案' },
+  { icon: '🧠', name: '观察：提取要点', think: '选两个例子：盲测骗过教授（有趣）+ 版权纠纷（有张力）。观点定为：AI 逼我们重新定义"创作"。', tool: 'note.extract()' },
+  { icon: '✍️', name: '行动：写初稿', think: '结构：一个开头场景（盲测）→ 两种立场 → 我的判断 → 给读者的邀请。语言要口语。', tool: 'write(draft.md)', obs: '✓ 初稿 826 字' },
+  { icon: '🪞', name: '反思：自我批评', think: '第三段"重新定义创作"说得太抽象，读者会觉得空。改为用一个具体问题收尾："如果是你，会署名吗？"', tool: 'revise(段3, 更具体)' },
+  { icon: '✅', name: '行动：终稿校验并交付', think: '查字数、错别字、事实表述（"盲测骗过教授"标注来源）。准备交付。', tool: 'check() → deliver(final.md)', obs: '✓ 校验通过，交付 802 字终稿' },
+];
+const BROKEN_PLAN = PLAN.map(s => ({ ...s }));
+BROKEN_PLAN[2].think = '（目标漂移）看到版权纠纷很有话题性，不如整篇写成版权科普——用户要的"AI 与诗"被我忘了…';
+BROKEN_PLAN[4].think = '（错误累积）初稿既然写完就完事了吧，第三段反正也看得懂。跳过修改。';
+BROKEN_PLAN[5].obs = '⚠ 字数 1120（超目标 40%），未校验来源——用户满意度下降';
+let si = -1, broken = false, playing = false, pt = null, speed = 1.0;
+function render() {
+  const box = document.getElementById('steps');
+  box.innerHTML = '';
+  const plan = broken ? BROKEN_PLAN : PLAN;
+  plan.forEach((s, i) => {
+    const d = document.createElement('div');
+    d.className = 'astep' + (i === si ? ' active' : i < si ? ' done' : '');
+    d.innerHTML = `<div class="head"><span class="icon">${s.icon}</span>${s.name}</div>
+      ${s.tool ? `<div class="tool">${s.tool}</div>` : ''}
+      <div class="think">💭 ${s.think}</div>
+      ${s.obs ? `<div class="observe">${s.obs}</div>` : ''}`;
+    box.append(d);
+  });
+  document.getElementById('ro').innerHTML = `进度 <b>${Math.max(0, si + 1)} / ${plan.length}</b>${broken && si >= 5 ? '\n⚠ 目标漂移 + 跳过自查：任务跑偏了' : si === plan.length - 1 ? '\n✅ 任务完成' : ''}`;
+}
+document.getElementById('run').addEventListener('click', e => {
+  playing = !playing;
+  e.target.textContent = playing ? '暂停 ■' : '执行任务 ▶';
+  if (playing) {
+    if (si >= PLAN.length - 1) si = -1;
+    pt = setInterval(() => {
+      if (si >= PLAN.length - 1) { clearInterval(pt); playing = false; e.target.textContent = '执行任务 ▶'; return; }
+      si++; render();
+    }, 1400 / speed);
+  } else clearInterval(pt);
+});
+document.getElementById('step').addEventListener('click', () => { si = Math.min(PLAN.length - 1, si + 1); render(); });
+document.getElementById('reset').addEventListener('click', () => { si = -1; playing = false; clearInterval(pt); document.getElementById('run').textContent = '执行任务 ▶'; render(); });
+document.getElementById('spd').addEventListener('input', e => { speed = +e.target.value / 10; document.getElementById('spv').textContent = speed.toFixed(1) + '×'; });
+document.getElementById('bz').append(brkSwitch('注入失败模式（目标漂移+跳过自查）', v => { broken = v; render(); }));
+render();
+</script>
+</body></html>

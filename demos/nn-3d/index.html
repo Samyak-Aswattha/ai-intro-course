@@ -1,0 +1,125 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>3D 神经网络漫游</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<script type="importmap">{"imports":{"three":"../../assets/lib/three.module.js"}}</script>
+<style>
+  .stage { position:relative; }
+  #tip { position:absolute; left:14px; bottom:14px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 14px; font-size:12px; font-family:var(--mono); line-height:1.8; }
+</style></head><body>
+<div class="demo-head"><span class="badge">3D 场景</span><span class="t">多层感知机 · 3D</span><span class="s">拖动旋转 · 滚轮缩放；点亮输入，看信号逐层变换；调层数/宽度看网络"长身体"</span></div>
+<div class="demo-body">
+  <div class="stage demo-stage">
+    <canvas id="c3d" class="stage-canvas"></canvas>
+    <div id="tip"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">结构</div>
+    <div id="ctls"></div>
+    <div class="panel-title">信号</div>
+    <div class="btn-row">
+      <button class="btn sm" id="fire">发射一次信号 ⚡</button>
+      <button class="btn sm ghost" id="autoOn">连续发射 ▶</button>
+    </div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 对比实验</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      颜色 = 激活强度（绿强红弱）。<b>深模式</b>：6 层窄网；<b>宽模式</b>：2 层宽网——参数量级相同，感受"深而窄"与"宽而扁"的差异。<br><br>关掉激活函数（弄坏开关），信号线性穿过，深层瞬间失去意义。
+    </div>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from '../../assets/lib/OrbitControls.js';
+import { slider, brkSwitch } from '../_shared/demo.js';
+
+const canvas = document.getElementById('c3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+cam.position.set(0, 3, 14);
+const controls = new OrbitControls(cam, canvas);
+controls.enableDamping = true;
+const dark = document.documentElement.dataset.theme === 'dark';
+scene.background = new THREE.Color(dark ? 0x16140f : 0xfaf9f6);
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+const dl = new THREE.DirectionalLight(0xffffff, 1);
+dl.position.set(4, 8, 6); scene.add(dl);
+
+let nLayers = 3, width = 4, noAct = false, auto = false;
+const group = new THREE.Group();
+scene.add(group);
+const acts = [];  /* 每层激活值 */
+function build() {
+  group.clear();
+  acts.length = 0;
+  const layers = [3, ...Array(nLayers).fill(width), 2];
+  layers.forEach((n, li) => {
+    const layer = [];
+    const x = (li - (layers.length - 1) / 2) * 2.2;
+    for (let i = 0; i < n; i++) {
+      const y = (i - (n - 1) / 2) * 0.9;
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28, 18, 18),
+        new THREE.MeshStandardMaterial({ color: dark ? 0x373226 : 0xcfc9bc, roughness: 0.5 })
+      );
+      mesh.position.set(x, y, 0);
+      group.add(mesh);
+      layer.push(mesh);
+    }
+    acts.push(layer);
+    /* 连线 */
+    if (li > 0) {
+      for (const a of acts[li - 1]) for (const b of layer) {
+        const geo = new THREE.BufferGeometry().setFromPoints([a.position, b.position]);
+        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: dark ? 0x2b2718 : 0xd9d4c8, transparent: true, opacity: 0.5 }));
+        group.add(line);
+      }
+    }
+  });
+}
+build();
+
+function fire() {
+  let v = acts[0].map(() => Math.random());
+  v.forEach((val, i) => setColor(acts[0][i], val));
+  for (let li = 1; li < acts.length; li++) {
+    v = v.map(() => {
+      const z = Math.random() * 2 - 1 + v.reduce((a, x) => a + x, 0) / Math.max(1, v.length) * 1.4;
+      return noAct ? Math.tanh(z) : (z > 0 ? Math.min(1, z) : 0);
+    });
+    v.forEach((val, i) => setColor(acts[li][i], val));
+  }
+}
+function setColor(mesh, v) {
+  const c = new THREE.Color().setHSL(0.33 * (1 - v), 0.85, 0.28 + v * 0.28);
+  mesh.material.color.copy(c);
+  mesh.material.emissive.copy(c);
+  mesh.material.emissiveIntensity = 0.25 + v * 0.5;
+  mesh.scale.setScalar(0.8 + v * 0.55);
+}
+document.getElementById('fire').addEventListener('click', fire);
+document.getElementById('autoOn').addEventListener('click', e => { auto = !auto; e.target.textContent = auto ? '停止 ■' : '连续发射 ▶'; });
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '隐藏层数', min: 1, max: 6, value: 3, onInput: v => { nLayers = v; build(); } }));
+ctls.append(slider({ label: '每层宽度', min: 2, max: 8, value: 4, onInput: v => { width = v; build(); } }));
+document.getElementById('bz').append(brkSwitch('去掉激活函数（线性穿透）', v => { noAct = v; }));
+document.getElementById('bz').append(brkSwitch('深模式（6 层窄网）', v => { if (v) { nLayers = 6; width = 3; } build(); }, false));
+document.getElementById('bz').append(brkSwitch('宽模式（2 层宽网）', v => { if (v) { nLayers = 2; width = 8; } build(); }, false));
+
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  cam.aspect = r.width / r.height; cam.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas.parentElement);
+resize();
+let lastFire = 0;
+(function animate(now) {
+  requestAnimationFrame(animate);
+  if (auto && now - lastFire > 700) { fire(); lastFire = now; }
+  controls.update();
+  renderer.render(scene, cam);
+})(0);
+document.getElementById('tip').textContent = `${nLayers} 隐藏层 × ${width} 神经元\n参数 ≈ ${(3 * width + (nLayers - 1) * width * width + width * 2)} 个权重`;
+</script>
+</body></html>

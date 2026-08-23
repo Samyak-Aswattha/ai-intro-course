@@ -1,0 +1,253 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>词向量算术台</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:16px; gap:14px; overflow-y:auto; }
+  .modetabs { display:flex; gap:4px; margin-bottom:2px; }
+  .modetabs button { flex:1; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); font-size:12.5px; color:var(--muted); cursor:pointer; font-family:var(--font); }
+  .modetabs button.on { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); font-weight:700; }
+  .calc { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:16px; border:1.5px solid var(--border); border-radius:14px; background:var(--surface); }
+  .calc select, .calc input { width:auto; min-width:90px; font-size:15px; padding:8px 12px; }
+  .op { font-size:22px; font-weight:700; color:var(--muted); width:28px; text-align:center; }
+  .eq { font-size:22px; font-weight:700; color:var(--accent); }
+  .go { margin-left:auto; }
+  .result { padding:14px 18px; border-radius:12px; background:var(--surface2); border:1px solid var(--border); }
+  .nn { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+  .nn-row { display:flex; align-items:center; gap:10px; }
+  .nn-row .rank { font-family:var(--mono); font-size:12px; color:var(--muted); width:22px; }
+  .nn-row .word { font-size:15px; font-weight:600; width:80px; }
+  .nn-row.hit .word { color:var(--ok); }
+  .nn-track { flex:1; height:14px; background:var(--surface); border-radius:7px; border:1px solid var(--border); overflow:hidden; }
+  .nn-fill { height:100%; background:linear-gradient(90deg, var(--accent), #d97a5c); border-radius:7px; }
+  .nn-row .sim { font-family:var(--mono); font-size:11.5px; color:var(--muted); width:52px; text-align:right; }
+  .vecvis { display:flex; gap:2px; margin-top:8px; align-items:flex-end; height:44px; }
+  .vv { width:9px; border-radius:2px 2px 0 0; background:var(--c3); opacity:.8; }
+  .preset { font-size:12px; color:var(--muted); margin-top:10px; line-height:1.8; }
+  .preset b { color: var(--text); }
+  .qcard { padding:16px; border:1.5px solid var(--border); border-radius:14px; background:var(--surface); text-align:center; }
+  .qcard .expr { font-size:20px; font-weight:700; }
+  .qcard .hint { font-size:12px; color:var(--muted); margin-top:4px; }
+  .choices { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px; }
+  .choices button { padding:10px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface2); font-size:14px; font-family:var(--font); cursor:pointer; }
+  .choices button:hover { border-color:var(--accent); }
+  .choices button.pick { border-color:var(--accent); background:var(--accent-soft); }
+  .choices button.correct { border-color:var(--ok); background:color-mix(in srgb, var(--ok) 12%, transparent); }
+  .choices button.wrong { border-color:var(--err); background:color-mix(in srgb, var(--err) 12%, transparent); }
+  .choices button:disabled { cursor:default; opacity:.85; }
+  .score-row { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
+  .score-row b { color:var(--text); font-family:var(--mono); }
+  .fb { font-size:13px; line-height:1.7; margin-top:10px; }
+  .hidden { display:none !important; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">词向量算术台</span><span class="s">国王 − 男人 + 女人 = ？先猜结果，再看余弦相似度算出的真实最近邻</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="modetabs">
+      <button id="tabChallenge" class="on">🎯 猜猜看</button>
+      <button id="tabExplore">🔬 自由试验</button>
+    </div>
+
+    <div id="challengePane">
+      <div class="score-row"><span>第 <b id="roundNo">1</b> 轮</span><span>正确 <b id="scoreFrac">0/0</b></span></div>
+      <div class="qcard">
+        <div class="expr" id="qexpr">国王 − 男人 + 女人 = ?</div>
+        <div class="hint" id="qhint">这是哪个方向？先猜一个答案</div>
+        <div class="choices" id="choices"></div>
+      </div>
+      <div class="fb" id="fb"></div>
+      <div class="result hidden" id="resultBox">
+        <div style="font-size:12.5px;color:var(--muted)">余弦相似度最近邻：</div>
+        <div class="nn" id="nn"></div>
+        <div class="vecvis" id="vv"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">↑ 结果向量（16 维可视化）</div>
+      </div>
+      <div class="btn-row"><button class="btn ghost hidden" id="nextRound">下一轮 →</button></div>
+    </div>
+
+    <div id="explorePane" class="hidden">
+      <div class="calc">
+        <select id="w1"></select><span class="op">−</span>
+        <select id="w2"></select><span class="op">+</span>
+        <select id="w3"></select><span class="eq">=</span>
+        <button class="btn go" id="go">计算 ▶</button>
+      </div>
+      <div class="result" style="margin-top:14px">
+        <div style="font-size:13px;color:var(--muted)" id="expr">选择三个词，按「计算」。</div>
+        <div class="nn" id="nn2"></div>
+        <div class="vecvis" id="vv2"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">↑ 结果向量（16 维可视化）</div>
+      </div>
+      <div class="preset" id="presets">
+        <b>经典算式：</b>
+        ① 国王 − 男人 + 女人（性别方向）② 北京 − 中国 + 法国（首都方向）③ 歌手 − 唱歌 + 演员（职业变换）④ 兄弟 − 男孩 + 女孩（亲属性别）
+      </div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">原理</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      词向量由"共现统计"训练（简化版 GloVe 思路）：意思近的词共现模式相似。<br><br>
+      算术为什么有效？因为训练中<b>稳定的方向被学出来了</b>：性别、首都、时态这些潜在维度对应向量空间里大致平行的箭头。
+    </div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 刻意发现偏见</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      Word2Vec 著名实验：<b>医生 − 男 + 女 ≈ 护士</b>。语料中的刻板印象被原样学进几何。<br><br>嵌入忠实反映"我们如何说话"——技术不是中立的镜子（第七章详谈）。
+    </div>
+  </div>
+</div>
+<script type="module">
+/* 36 词 × 16 维手工语义空间（模拟小型词向量的结构） */
+const VOCAB = ['国王','女王','男人','女人','男孩','女孩','兄弟','姐妹','王子','公主',
+  '北京','中国','法国','巴黎','日本','东京','英国','伦敦',
+  '歌手','唱歌','演员','表演','作家','写作',
+  '医生','护士','工程师','教师','程序员',
+  '跑','走','跳','飞','吃','睡','猫','狗'];
+const D = {
+  '国王':[9,1,1,2,1,1,1,9,1,1,1,1,1,1,1,1],'女王':[9,7,1,2,1,7,1,9,1,1,1,1,1,1,1,1],
+  '男人':[5,1,1,1,4,1,1,1,1,1,1,1,1,1,1,1],'女人':[5,7,1,1,4,7,1,1,1,1,1,1,1,1,1,1],
+  '男孩':[5.5,1,1,1,3,1,4,1,1,1,1,1,1,1,1,1],'女孩':[5.5,7,1,1,3,7,4,1,1,1,1,1,1,1,1,1],
+  '兄弟':[6,1,1,1,4,1,4,1,1,1,1,1,1,1,1,1],'姐妹':[6,7,1,1,4,7,4,1,1,1,1,1,1,1,1,1],
+  '王子':[8,1,1,2,3,1,1,8,1,1,1,1,1,1,1,1],'公主':[8,7,1,2,3,7,1,8,1,1,1,1,1,1,1,1],
+  '北京':[1,1,7,1,1,1,1,1,9,1,1,1,1,1,1,1],'中国':[1,1,8,1,1,1,1,1,9,9,1,1,1,1,1,1],
+  '法国':[1,7,8,1,1,1,1,1,9,1,9,1,1,1,1,1],'巴黎':[1,7,7,1,1,1,1,1,9,1,1,9,1,1,1,1],
+  '日本':[1,1,8,1,1,1,1,1,9,1,1,1,9,1,1,1],'东京':[1,1,7,1,1,1,1,1,9,1,1,1,1,9,1,1],
+  '英国':[1,1,8,1,1,1,1,1,9,1,1,1,1,1,9,1],'伦敦':[1,1,7,1,1,1,1,1,9,1,1,1,1,1,1,9],
+  '歌手':[1,1,1,6,1,1,1,1,1,1,1,1,1,1,1,7],'唱歌':[1,1,1,7,1,1,1,1,1,1,1,1,1,1,1,7],
+  '演员':[1,1,1,6,1,1,1,1,1,1,1,1,1,1,1,6],'表演':[1,1,1,7,1,1,1,1,1,1,1,1,1,1,1,6],
+  '作家':[1,1,1,5,1,1,1,1,1,1,1,1,1,1,1,5],'写作':[1,1,1,6,1,1,1,1,1,1,1,1,1,1,1,5],
+  '医生':[1,1,1,4,7,1,1,1,1,1,1,1,1,1,1,3],'护士':[1,7,1,3,6,6,1,1,1,1,1,1,1,1,1,3],
+  '工程师':[1,1,1,4,6,1,1,1,1,1,1,1,1,1,1,2],'教师':[1,1,1,4,6,1,1,1,1,1,1,1,1,1,1,2],
+  '程序员':[1,1,1,4,6,1,1,1,1,1,1,1,1,1,1,1],
+  '跑':[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,8].slice(0,16),'走':[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,6],
+  '跳':[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,7],'飞':[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,7],
+  '吃':[3,1,1,2,1,1,1,1,1,1,1,1,1,1,1,2],'睡':[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  '猫':[8,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],'狗':[8,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+};
+function vec(w) { return D[w] || new Array(16).fill(1); }
+function cosine(a, b) {
+  let d = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { d += a[i] * b[i]; na += a[i] ** 2; nb += b[i] ** 2; }
+  return d / Math.sqrt(na * nb + 1e-9);
+}
+function nearest(a, b, c) {
+  const res = vec(a).map((v, i) => v - vec(b)[i] + vec(c)[i]);
+  const nns = VOCAB.filter(w => w !== a && w !== b && w !== c)
+    .map(w => ({ w, s: cosine(res, vec(w)) }))
+    .sort((x, y) => y.s - x.s)
+    .slice(0, 6);
+  return { res, nns };
+}
+function renderResult(res, nns, correctWord, nnId, vvId) {
+  const mx = nns[0].s;
+  document.getElementById(nnId).innerHTML = nns.map((n, i) => `
+    <div class="nn-row${n.w === correctWord ? ' hit' : ''}"><span class="rank">${i + 1}</span><span class="word">${n.w}</span>
+    <div class="nn-track"><div class="nn-fill" style="width:${(n.s / mx * 100).toFixed(0)}%"></div></div>
+    <span class="sim">${n.s.toFixed(3)}</span></div>`).join('');
+  const vv = document.getElementById(vvId);
+  vv.innerHTML = '';
+  res.forEach(v => {
+    const d = document.createElement('div');
+    d.className = 'vv';
+    const h = Math.max(3, Math.min(1, v / 10) * 44);
+    d.style.height = h + 'px';
+    d.style.background = v >= 0 ? 'var(--c3)' : 'var(--err)';
+    vv.append(d);
+  });
+}
+
+/* ---------- 猜猜看模式 ---------- */
+const ROUNDS = [
+  { a: '国王', b: '男人', c: '女人', hint: '性别方向' },
+  { a: '北京', b: '中国', c: '法国', hint: '首都方向' },
+  { a: '歌手', b: '唱歌', c: '演员', hint: '职业变换' },
+  { a: '兄弟', b: '男孩', c: '女孩', hint: '亲属性别' },
+];
+let order = [], oi = 0, round = 0, correct = 0, answered = false;
+function shuffleOrder() {
+  order = ROUNDS.map((_, i) => i).sort(() => Math.random() - 0.5);
+  oi = 0;
+}
+function startRound() {
+  round++;
+  answered = false;
+  if (oi >= order.length) shuffleOrder();
+  const q = ROUNDS[order[oi++]];
+  const { nns } = nearest(q.a, q.b, q.c);
+  const trueTop = nns[0].w;
+  const distractors = VOCAB.filter(w => ![q.a, q.b, q.c, trueTop].includes(w)).sort(() => Math.random() - 0.5).slice(0, 3);
+  const opts = [trueTop, ...distractors].sort(() => Math.random() - 0.5);
+  document.getElementById('roundNo').textContent = round;
+  document.getElementById('qexpr').textContent = `${q.a} − ${q.b} + ${q.c} = ?`;
+  document.getElementById('qhint').textContent = `方向提示：${q.hint} —— 选一个你猜的答案`;
+  document.getElementById('fb').textContent = '';
+  document.getElementById('resultBox').classList.add('hidden');
+  document.getElementById('nextRound').classList.add('hidden');
+  const box = document.getElementById('choices');
+  box.innerHTML = '';
+  opts.forEach(w => {
+    const b = document.createElement('button');
+    b.textContent = w;
+    b.addEventListener('click', () => pick(w, q, trueTop));
+    box.append(b);
+  });
+}
+function pick(w, q, trueTop) {
+  if (answered) return;
+  answered = true;
+  const ok = w === trueTop;
+  if (ok) correct++;
+  document.getElementById('scoreFrac').textContent = `${correct}/${round}`;
+  [...document.getElementById('choices').children].forEach(b => {
+    b.disabled = true;
+    if (b.textContent === trueTop) b.classList.add('correct');
+    else if (b.textContent === w) b.classList.add('wrong');
+  });
+  document.getElementById('fb').innerHTML = ok
+    ? `✅ 猜对了——向量算术真的算出了「<b>${trueTop}</b>」`
+    : `❌ 差一点——真实最近邻是「<b>${trueTop}</b>」，不是「${w}」`;
+  const { res, nns } = nearest(q.a, q.b, q.c);
+  renderResult(res, nns, trueTop, 'nn', 'vv');
+  document.getElementById('resultBox').classList.remove('hidden');
+  document.getElementById('nextRound').classList.remove('hidden');
+  if (round % 4 === 0) {
+    const rate = Math.round(correct / round * 100);
+    document.getElementById('fb').innerHTML += `<br><br><b>已完成一整轮（4 题）：正确率 ${rate}%。</b> ${rate >= 75 ? '你已经在用"方向"而不是"词义"思考了——这正是向量算术的核心直觉。' : '如果猜偏了也正常：算术给出的是训练语料里最"稳定"的方向，不一定是你脑子里第一反应的那个词。'}`;
+  }
+}
+document.getElementById('nextRound').addEventListener('click', startRound);
+document.getElementById('tabChallenge').addEventListener('click', () => switchMode('challenge'));
+document.getElementById('tabExplore').addEventListener('click', () => switchMode('explore'));
+function switchMode(m) {
+  document.getElementById('tabChallenge').classList.toggle('on', m === 'challenge');
+  document.getElementById('tabExplore').classList.toggle('on', m === 'explore');
+  document.getElementById('challengePane').classList.toggle('hidden', m !== 'challenge');
+  document.getElementById('explorePane').classList.toggle('hidden', m !== 'explore');
+}
+
+/* ---------- 自由试验模式（原计算器） ---------- */
+const [w1s, w2s, w3s] = ['w1', 'w2', 'w3'].map(id => document.getElementById(id));
+VOCAB.forEach(w => {
+  [w1s, w2s, w3s].forEach(s => {
+    const o = document.createElement('option');
+    o.value = o.textContent = w;
+    s.append(o);
+  });
+});
+w1s.value = '国王'; w2s.value = '男人'; w3s.value = '女人';
+document.getElementById('go').addEventListener('click', calcExplore);
+function calcExplore() {
+  const a = w1s.value, b = w2s.value, c = w3s.value;
+  document.getElementById('expr').innerHTML = `<b style="font-size:15px">${a} − ${b} + ${c} = ?</b>　余弦相似度最近邻：`;
+  const { res, nns } = nearest(a, b, c);
+  renderResult(res, nns, null, 'nn2', 'vv2');
+}
+document.getElementById('bz').append(Object.assign(document.createElement('button'), {
+  className: 'btn sm ghost', textContent: '⚕ 试试：医生 − 男 + 女',
+  onclick: () => { switchMode('explore'); w1s.value = '医生'; w2s.value = '男人'; w3s.value = '女人'; calcExplore(); }
+}));
+
+shuffleOrder();
+startRound();
+calcExplore();
+</script>
+</body></html>

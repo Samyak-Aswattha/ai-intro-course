@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人工智能导论 - 开篇寄语</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0a0e27 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* 背景粒子效果 */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: rgba(100, 200, 255, 0.5);
+            border-radius: 50%;
+            animation: float 20s infinite linear;
+        }
+
+        @keyframes float {
+            from {
+                transform: translateY(100vh) translateX(0);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            to {
+                transform: translateY(-100vh) translateX(100px);
+                opacity: 0;
+            }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* 标题部分 */
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+            opacity: 0;
+            animation: fadeInDown 1s ease-out forwards;
+        }
+
+        @keyframes fadeInDown {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .title {
+            font-size: 3em;
+            font-weight: 300;
+            color: #fff;
+            margin-bottom: 10px;
+            letter-spacing: 8px;
+            text-shadow: 0 0 30px rgba(100, 200, 255, 0.5);
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 2px;
+        }
+
+        /* 内容卡片 */
+        .content-wrapper {
+            display: grid;
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px;
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.5s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .card:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(100, 200, 255, 0.2);
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(100, 200, 255, 0.1) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-number {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            text-align: center;
+            line-height: 40px;
+            color: white;
+            font-weight: bold;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        .card-content {
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 1.8;
+            font-size: 1.1em;
+        }
+
+        .highlight {
+            color: #64c8ff;
+            font-weight: 500;
+            position: relative;
+            display: inline-block;
+        }
+
+        .highlight::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+        }
+
+        .card:hover .highlight::after {
+            width: 100%;
+        }
+
+        /* 最后的欢迎语 */
+        .welcome {
+            text-align: center;
+            margin-top: 60px;
+            padding: 40px;
+            opacity: 0;
+            animation: fadeIn 1s ease-out forwards;
+            animation-delay: 2s;
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+
+        .welcome-text {
+            font-size: 1.3em;
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.6;
+        }
+
+        .start-button {
+            display: inline-block;
+            margin-top: 30px;
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 30px;
+            font-size: 1.1em;
+            font-weight: 500;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .start-button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .start-button:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .start-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .title {
+                font-size: 2em;
+                letter-spacing: 4px;
+            }
+            
+            .card {
+                padding: 25px;
+            }
+            
+            .card-content {
+                font-size: 1em;
+            }
+        }
+
+        /* 打字机效果 */
+        .typing {
+            border-right: 2px solid rgba(255, 255, 255, 0.7);
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 49% {
+                border-color: rgba(255, 255, 255, 0.7);
+            }
+            50%, 100% {
+                border-color: transparent;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 粒子背景 -->
+    <div class="particles" id="particles"></div>
+
+    <div class="container">
+        <!-- 标题 -->
+        <div class="header">
+            <h1 class="title">开篇寄语</h1>
+            <p class="subtitle">人工智能导论 · 第一课</p>
+        </div>
+
+        <!-- 内容卡片 -->
+        <div class="content-wrapper">
+            <div class="card" data-delay="0">
+                <div class="card-number">1</div>
+                <div class="card-content">
+                    <span class="highlight">人生，从这一刻起正式进入"开卷考试"模式。</span>
+                    你们所熟悉的那套"划定范围、按部就班、唯一答案"的规则，在这里基本失效。大学没有标准答案，人生更没有。这门课，这个专业，这四年，往后余生，处处都是"超纲题"。<span class="highlight">优秀的考生习惯于解答问题，而真正的学习者，需要学会为自己提出问题，并寻找属于自己的解题思路。</span>
+                </div>
+            </div>
+
+            <div class="card" data-delay="200">
+                <div class="card-number">2</div>
+                <div class="card-content">
+                    <span class="highlight">在AI时代，学习的第一奥义是："跳着来"。</span>
+                    别再迷信那种从第一页读到最后一页的线性学习。这个领域的变化速度远超任何一本教材的出版速度。<span class="highlight">最重要的能力，是快速定位知识核心、串联碎片信息、并敢于抛弃过时内容的能力。</span> 在这门课里，我希望你们能勇敢地跳跃、主动地链接、大胆地质疑。把我当作你们的"搜索引擎"和"验证工具"，而不是唯一的"答案之书"。
+                </div>
+            </div>
+
+            <div class="card" data-delay="400">
+                <div class="card-number">3</div>
+                <div class="card-content">
+                    <span class="highlight">你们的首要任务不是"卷"成第一，而是"找到自己"。</span>
+                    AI最擅长的就是模仿和优化，但它暂时还不知道"我是谁"。<span class="highlight">你们在大学里最珍贵的收获，不应只是一份漂亮的成绩单，而是一个丰盈的、独特的、充满好奇心的自我。</span> 不要东张西望，被别人的节奏打乱步伐。请向内探寻，找到让你真正兴奋的领域，然后用AI作为你的放大器，去创造、去表达、去解决真正有价值的问题。
+                </div>
+            </div>
+
+            <div class="card" data-delay="600">
+                <div class="card-number">4</div>
+                <div class="card-content">
+                    <span class="highlight">请保持"野生"的力量。</span>
+                    教育系统或许会不可避免地试图"驯化"你们，用绩点、排名和标准来规训你们。<span class="highlight">请务必保留一份"野生"的好奇心和探索欲，</span>保持那种不为学分、只为解决问题的原始冲动。这门课，我希望它不仅是知识的传授，更是一场为你们保存并激发这种"野生"力量的冒险。
+                </div>
+            </div>
+        </div>
+
+        <!-- 结束语 -->
+        <div class="welcome">
+            <p class="welcome-text">
+                各位，欢迎来到一个充满不确定性的世界，<br>
+                也欢迎来到AI的世界。
+            </p>
+            <a href="#" class="start-button" onclick="startCourse(event)">我们的课程，现在开始</a>
+        </div>
+    </div>
+
+    <script>
+        // 创建粒子背景
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            const particleCount = 50;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 20 + 's';
+                particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+                particlesContainer.appendChild(particle);
+            }
+        }
+
+        // 卡片渐入动画
+        function animateCards() {
+            const cards = document.querySelectorAll('.card');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry, index) => {
+                    if (entry.isIntersecting) {
+                        setTimeout(() => {
+                            entry.target.classList.add('visible');
+                        }, parseInt(entry.target.dataset.delay));
+                    }
+                });
+            }, { threshold: 0.1 });
+
+            cards.forEach(card => observer.observe(card));
+        }
+
+        // 点击卡片的交互
+        function addCardInteraction() {
+            const cards = document.querySelectorAll('.card');
+            cards.forEach(card => {
+                card.addEventListener('click', function() {
+                    // 创建涟漪效果
+                    const ripple = document.createElement('div');
+                    ripple.style.position = 'absolute';
+                    ripple.style.width = '20px';
+                    ripple.style.height = '20px';
+                    ripple.style.borderRadius = '50%';
+                    ripple.style.background = 'rgba(255, 255, 255, 0.5)';
+                    ripple.style.transform = 'translate(-50%, -50%)';
+                    ripple.style.pointerEvents = 'none';
+                    ripple.style.animation = 'ripple 0.6s ease-out';
+                    
+                    const rect = this.getBoundingClientRect();
+                    ripple.style.left = (event.clientX - rect.left) + 'px';
+                    ripple.style.top = (event.clientY - rect.top) + 'px';
+                    
+                    this.appendChild(ripple);
+                    
+                    setTimeout(() => ripple.remove(), 600);
+                });
+            });
+        }
+
+        // 添加涟漪动画
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes ripple {
+                to {
+                    width: 400px;
+                    height: 400px;
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 开始课程按钮点击事件
+        function startCourse(event) {
+            event.preventDefault();
+            const button = event.target;
+            button.innerHTML = '正在启动...';
+            
+            setTimeout(() => {
+                button.innerHTML = '准备就绪！';
+                // 这里可以添加跳转逻辑或其他互动
+            }, 1500);
+        }
+
+        // 初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            createParticles();
+            animateCards();
+            addCardInteraction();
+        });
+    </script>
+</body>
+</html>

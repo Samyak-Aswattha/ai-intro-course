@@ -1,0 +1,129 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>KNN 分类画布</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; cursor:crosshair; }
+  .helper { position:absolute; left:12px; top:12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:8px 12px; font-size:12px; color:var(--muted); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">KNN · 近邻投票</span><span class="s">点击画布放数据（左键 A 类，右键 B 类），再点空白处看 k 个邻居投票；调 k 看边界变化</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="helper">当前模式：<b id="mode">添加 A 类点（左键）/ B 类（右键）</b></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">控制台</div>
+    <div class="btn-row">
+      <button class="btn sm ghost" id="demo1">载入：双团数据</button>
+      <button class="btn sm ghost" id="demo2">载入：异或数据</button>
+      <button class="btn sm ghost" id="clear">清空</button>
+    </div>
+    <div id="ctls"></div>
+    <div class="readout" id="ro"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 极端 k 体验</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      <b>k = 1</b>：边界锯齿、单点敏感（过拟合）；<b>k = 全部</b>：永远预测多数类（欠拟合）。<br><br>
+      KNN 没有"训练"——它把所有点背下来，预测时现算距离，所以叫<b>惰性学习</b>。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, slider, brkSwitch, RNG, gauss } from '../_shared/demo.js';
+const cv = document.getElementById('cv');
+let ctx = autoFit(cv, draw);
+let pts = [], k = 5, probe = null, showBoundary = true, drawStep = 8;
+const CA = '#0f766e', CB = '#b4482b';
+const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  const r = cv.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const cls = e.button === 2 ? 1 : 0;
+  pts.push({ x, y, c: cls });
+  probe = null;
+  draw();
+  updRO();
+});
+cv.addEventListener('mousemove', e => {
+  if (!pts.length || e.buttons) return;
+  const r = cv.getBoundingClientRect();
+  probe = { x: e.clientX - r.left, y: e.clientY - r.top };
+  draw();
+});
+function neighbors(x, y) {
+  return pts.map(p => ({ p, d: Math.hypot(p.x - x, p.y - y) })).sort((a, b) => a.d - b.d);
+}
+function vote(x, y) {
+  const ns = neighbors(x, y).slice(0, Math.min(k, pts.length));
+  let a = 0, b = 0;
+  ns.forEach(n => n.p.c ? b++ : a++);
+  return { a, b, ns };
+}
+function draw() {
+  ctx.clearRect(0, 0, W(), H());
+  /* 决策边界（粗网格） */
+  if (showBoundary && pts.length) {
+    const step = drawStep;
+    for (let x = 0; x < W(); x += step) for (let y = 0; y < H(); y += step) {
+      const v = vote(x, y);
+      if (v.a === v.b) continue;
+      ctx.fillStyle = (v.a > v.b ? CA : CB) + '14';
+      ctx.fillRect(x, y, step, step);
+    }
+  }
+  /* 数据点 */
+  pts.forEach(p => {
+    ctx.fillStyle = p.c ? CB : CA;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 5.5, 0, 7); ctx.fill();
+  });
+  /* 探针 */
+  if (probe && pts.length) {
+    const v = vote(probe.x, probe.y);
+    v.ns.forEach(n => {
+      ctx.strokeStyle = 'rgba(67,56,202,.45)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(probe.x, probe.y); ctx.lineTo(n.p.x, n.p.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#4338ca'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(n.p.x, n.p.y, 9, 0, 7); ctx.stroke();
+      ctx.lineWidth = 1;
+    });
+    const cls = v.a === v.b ? null : (v.a > v.b ? 0 : 1);
+    ctx.fillStyle = cls === null ? '#8a857b' : (cls ? CB : CA);
+    ctx.beginPath(); ctx.arc(probe.x, probe.y, 7, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#4338ca'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(probe.x, probe.y, 7, 0, 7); ctx.stroke();
+    ctx.lineWidth = 1;
+    document.getElementById('mode').innerHTML = `探针投票：<b style="color:${v.a > v.b ? CA : CB}">${v.a === v.b ? '平票' : (v.a > v.b ? 'A 类' : 'B 类')}</b>（A ${v.a} : B ${v.b}）`;
+  }
+}
+function updRO() {
+  document.getElementById('ro').innerHTML = `样本数 <b>${pts.length}</b>（A ${pts.filter(p => !p.c).length} / B ${pts.filter(p => p.c).length}）\nk = <b>${k}</b>`;
+}
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: 'k（邻居数）', min: 1, max: 30, value: 5, onInput: v => { k = v; draw(); updRO(); } }));
+ctls.append(slider({ label: '边界网格密度', min: 4, max: 24, value: 8, onInput: v => { drawStep = v; draw(); } }));
+document.getElementById('bz').append(brkSwitch('k = 1（最敏感）', v => { k = v ? 1 : 5; draw(); updRO(); }));
+document.getElementById('bz').append(brkSwitch('k = 全部（最迟钝）', v => { k = v ? 9999 : 5; draw(); updRO(); }, false));
+document.getElementById('clear').addEventListener('click', () => { pts = []; probe = null; draw(); updRO(); });
+document.getElementById('demo1').addEventListener('click', () => {
+  const rng = RNG(11);
+  pts = [];
+  for (let i = 0; i < 24; i++) pts.push({ x: W() * 0.3 + gauss(rng, 0, 55), y: H() * 0.4 + gauss(rng, 0, 45), c: 0 });
+  for (let i = 0; i < 24; i++) pts.push({ x: W() * 0.7 + gauss(rng, 0, 55), y: H() * 0.6 + gauss(rng, 0, 45), c: 1 });
+  draw(); updRO();
+});
+document.getElementById('demo2').addEventListener('click', () => {
+  const rng = RNG(23);
+  pts = [];
+  const quads = [[0.28, 0.3, 0], [0.72, 0.68, 0], [0.72, 0.3, 1], [0.28, 0.68, 1]];
+  quads.forEach(([qx, qy, c]) => {
+    for (let i = 0; i < 14; i++) pts.push({ x: W() * qx + gauss(rng, 0, 42), y: H() * qy + gauss(rng, 0, 38), c });
+  });
+  draw(); updRO();
+});
+draw(); updRO();
+</script>
+</body></html>

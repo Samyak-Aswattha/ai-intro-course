@@ -1,0 +1,96 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>诗歌擂台</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:16px; gap:14px; overflow-y:auto; }
+  .poem { border:1.5px solid var(--border); border-radius:14px; background:var(--surface); padding:20px 26px; font-family:var(--font-display, 'Noto Serif SC', serif); font-size:17px; line-height:2.2; position:relative; letter-spacing:.04em; }
+  .poem .meta { font-family:var(--font-body); font-size:12px; color:var(--muted); margin-top:10px; letter-spacing:0; }
+  .judge { display:flex; gap:10px; }
+  .reveal { padding:12px 16px; border-radius:12px; font-size:13px; line-height:1.8; display:none; }
+  .reveal.good { background:var(--ok-soft,#dcf0e2); color:var(--ok); }
+  .reveal.bad { background:var(--err-soft,#f8dcdc); color:var(--err); }
+  .scoreline { font-size:13px; color:var(--muted); }
+  .scoreline b { color:var(--accent); font-size:16px; }
+</style></head><body>
+<div class="demo-head"><span class="badge">辩论场</span><span class="t">诗歌擂台 · 人 or 机？</span><span class="s">盲测判断作者，答对答错都会给你复盘线索——最后回答三个直击创作观的问题</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="poem" id="poem"></div>
+    <div class="judge" id="judge"></div>
+    <div class="reveal" id="reveal"></div>
+    <div class="scoreline" id="score"></div>
+    <div class="card" id="quiz3" style="display:none; font-size:13.5px; line-height:2"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">战绩</div>
+    <div class="readout" id="ro">0 / 0</div>
+    <div class="panel-title">判断线索卡</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      常见的"机器味"：意象堆砌但<b>缺乏具体经验锚点</b>；格律工整但<b>结尾急于升华</b>；情感词密度高而<b>细节密度低</b>。<br><br>
+      但注意：人也会套话，机器也能写出细节——<b>你的判断标准本身，就是这一节要审视的对象</b>。
+    </div>
+  </div>
+</div>
+<script type="module">
+/* 诗库：ai = 是否 AI 生成（AI 诗为典型大模型风格仿作） */
+const POEMS = [
+  { lines: ['月光落在旧信封上', '像一句没说完的话', '我数着邮票的齿孔', '把整个秋天折进去'], meta: '现代诗 · 短章', ai: false, hint: '具体物件的私人化使用（邮票齿孔）是经验写作的痕迹。', author: '人写' },
+  { lines: ['夜色温柔如水', '星光洒满天空', '思念如潮水般涌来', '在心底泛起涟漪'], meta: '现代诗 · 抒情', ai: true, hint: '高频意象 + 通用比喻（如水/如潮），零具体细节——典型的"平均化"生成。', author: 'AI 生成' },
+  { lines: ['我攥着最后的硬币', '在自动贩卖机前', '听见整个东京', '把灯一盏盏关掉'], meta: '现代诗 · 都市', ai: false, hint: '动作（攥硬币）与场景（贩卖机）构成不可替换的经验锚点。', author: '人写' },
+  { lines: ['春风轻拂柳絮飞', '燕子归来筑新巢', '大地苏醒万物长', '人间处处是春光'], meta: '古体 · 春景', ai: true, hint: '四句全部来自高频春景词库，无一处个人视角——组合流畅但无人"在场"。', author: 'AI 生成' },
+  { lines: ['母亲的缝纫机', '在深夜咔嗒作响', '三十年后我才听懂', '那是时间的织补声'], meta: '现代诗 · 亲情', ai: false, hint: '缝纫机是私人记忆物；"三十年后"给出只有亲历者才有的时间纵深。', author: '人写' },
+  { lines: ['在数据的海洋里', '灵魂寻找着归宿', '算法编织着梦想', '代码书写着诗篇'], meta: '现代诗 · 科技', ai: true, hint: '抽象大词（灵魂/梦想/诗篇）直接并置，没有感官细节——概念诗的"机器口音"。', author: 'AI 生成' },
+];
+let idx = 0, correct = 0, total = 0, answered = false;
+function render() {
+  const p = POEMS[idx];
+  answered = false;
+  document.getElementById('poem').innerHTML = p.lines.join('<br>') + `<div class="meta">${p.meta} · 《无题》</div>`;
+  document.getElementById('reveal').style.display = 'none';
+  document.getElementById('quiz3').style.display = 'none';
+  const j = document.getElementById('judge');
+  j.innerHTML = '';
+  [['人写的', false], ['AI 生成的', true]].forEach(([label, isAI]) => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = '✍️ ' + label;
+    b.addEventListener('click', () => judge(isAI));
+    j.append(b);
+  });
+}
+function judge(isAI) {
+  if (answered) return;
+  answered = true;
+  total++;
+  const p = POEMS[idx];
+  const right = isAI === p.ai;
+  if (right) correct++;
+  const rv = document.getElementById('reveal');
+  rv.style.display = 'block';
+  rv.className = 'reveal ' + (right ? 'good' : 'bad');
+  rv.innerHTML = (right ? '✅ 答对了！' : '❌ 猜错了。') + ` 这是<b>${p.author}</b>的诗。<br>线索复盘：${p.hint}`;
+  document.getElementById('ro').innerHTML = `${correct} / ${total}（正确率 ${total ? Math.round(correct / total * 100) : 0}%）`;
+  document.getElementById('score').innerHTML = `已完成 ${idx + 1} / ${POEMS.length} 首` + (idx < POEMS.length - 1 ? '　<span style="color:var(--muted)">（点击右侧「下一首」）</span>' : '');
+  if (total >= 4) showQuiz3();
+}
+function showQuiz3() {
+  const q = document.getElementById('quiz3');
+  q.style.display = 'block';
+  q.innerHTML = `<b style="color:var(--accent)">🎯 三连问（写下你的答案，期末辩题预热）</b><br>
+  ① 如果一首 AI 诗让你落泪，这份感动<b>证明机器有诗意</b>吗？<br>
+  ② 诗人匿名用 AI 生成初稿再修改 5%，署名权算谁的？95% 呢？<br>
+  ③ 你判断"真诗"的最低必要条件是什么——在场？意图？语言？读者？`;
+}
+/* 下一首按钮放 panel */
+const next = document.createElement('button');
+next.className = 'btn';
+next.style.cssText = 'width:100%;margin-top:8px';
+next.textContent = '下一首 ⏭';
+next.addEventListener('click', () => {
+  idx = (idx + 1) % POEMS.length;
+  render();
+});
+document.querySelector('.demo-panel').append(next);
+render();
+</script>
+</body></html>

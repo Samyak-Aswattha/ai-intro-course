@@ -1,0 +1,106 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>风格迁移工作台</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:14px; overflow:auto; }
+  .row3 { display:flex; gap:16px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  .artbox { text-align:center; }
+  canvas { border:1px solid var(--border); border-radius:12px; background:#fff; box-shadow:0 4px 14px rgba(0,0,0,.08); }
+  .artbox .cap { font-size:12px; color:var(--muted); margin-top:6px; }
+  .strengthbar { width:min(460px, 90%); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">风格迁移 · 内容 × 风格的分离与重组</span><span class="s">左边是"画什么"（内容），中间是"怎么画"（风格）——拖强度滑杆看两者如何被编织在一起</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="row3">
+      <div class="artbox"><canvas id="content" width="140" height="140"></canvas><div class="cap">① 内容图（画什么）</div></div>
+      <div style="font-size:22px;color:var(--muted)">+</div>
+      <div class="artbox"><canvas id="style" width="140" height="140"></canvas><div class="cap" id="styleName">② 风格图（怎么画）</div></div>
+      <div style="font-size:22px;color:var(--muted)">=</div>
+      <div class="artbox"><canvas id="out" width="220" height="220"></canvas><div class="cap">③ 生成结果</div></div>
+    </div>
+    <div class="strengthbar">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)"><span>0%（原图）</span><span>风格强度</span><span>100%（全风格化）</span></div>
+      <input type="range" id="str" min="0" max="100" value="65" style="width:100%">
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">风格库</div>
+    <div class="tabs" id="styles"></div>
+    <div class="btn-row"><button class="btn sm" id="go">合成 ▶</button></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      Gatys 等人 2015 年的发现：CNN 里<b>内容</b>与<b>风格</b>天然分居——内容是高层特征的空间排布，风格是低层特征的统计纹理。本实验用滤镜模拟其效果。<br><br>
+      风格可迁移，恰恰说明"风格"是<b>可计算的统计量</b>——这对艺术哲学（第八章）是个大新闻。
+    </div>
+  </div>
+</div>
+<script type="module">
+/* 内容图：程序化小屋场景 */
+function drawContent(c) {
+  const x = c.getContext('2d');
+  x.fillStyle = '#e8f0f8'; x.fillRect(0, 0, 140, 140);
+  x.fillStyle = '#7fb2e5'; x.beginPath(); x.arc(105, 30, 16, 0, 7); x.fill();
+  x.fillStyle = '#5d8a4a'; x.fillRect(0, 95, 140, 45);
+  x.fillStyle = '#c9a06a'; x.fillRect(35, 65, 60, 45);
+  x.fillStyle = '#8a4b2d'; x.beginPath(); x.moveTo(28, 65); x.lineTo(65, 38); x.lineTo(102, 65); x.fill();
+  x.fillStyle = '#4a3520'; x.fillRect(58, 82, 14, 28);
+  x.fillStyle = '#fff'; x.fillRect(40, 72, 12, 12); x.fillRect(78, 72, 12, 12);
+}
+/* 风格定义：颜色盘 + 纹理笔触函数 */
+const STYLES = {
+  starry: { name: '梵高 · 星空', bg: '#1a2a5e', colors: ['#f2d34c', '#4a6fd4', '#e8eaef', '#2c3f8f', '#d4a72c'], brush(ctx, s) { ctx.lineWidth = 2.4; for (let i = 0; i < 260; i++) { const a = rng2() * 7; const r = 3 + rng2() * 12; const px = rng2() * s, py = rng2() * s; ctx.strokeStyle = this.colors[Math.floor(rng2() * this.colors.length)]; ctx.beginPath(); ctx.arc(px, py, r, a, a + 2.4); ctx.stroke(); } } },
+  ukiyo: { name: '浮世绘 · 海浪', bg: '#f4ead8', colors: ['#1d4e89', '#5aa9e6', '#e8c547', '#333', '#fff'], brush(ctx, s) { ctx.lineWidth = 1.8; for (let i = 0; i < 300; i++) { const px = rng2() * s, py = rng2() * s; ctx.strokeStyle = this.colors[Math.floor(rng2() * this.colors.length)]; ctx.beginPath(); ctx.moveTo(px, py); ctx.quadraticCurveTo(px + 8 + rng2() * 6, py - 8 - rng2() * 8, px + 16 + rng2() * 10, py + rng2() * 4); ctx.stroke(); } } },
+  ink: { name: '水墨 · 山水', bg: '#f5f1e8', colors: ['#2b2b2b', '#555', '#888', '#aaa', '#333'], brush(ctx, s) { for (let i = 0; i < 200; i++) { const px = rng2() * s, py = rng2() * s; ctx.fillStyle = this.colors[Math.floor(rng2() * this.colors.length)]; ctx.globalAlpha = 0.14 + rng2() * 0.3; ctx.beginPath(); ctx.ellipse(px, py, 1 + rng2() * 8, 1 + rng2() * 16, rng2() * 3, 0, 7); ctx.fill(); } ctx.globalAlpha = 1; } },
+  pixel: { name: '像素 · 复古游戏', bg: '#2d1b69', colors: ['#ff004d', '#ffec27', '#29adff', '#83769c', '#ff77a8'], brush(ctx, s) { const ps = 7; for (let y = 0; y < s; y += ps) for (let x2 = 0; x2 < s; x2 += ps) { if (rng2() < 0.4) { ctx.fillStyle = this.colors[Math.floor(rng2() * this.colors.length)]; ctx.fillRect(x2, y, ps, ps); } } } },
+};
+let rng2 = (() => { let s = 42; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+let cur = 'starry';
+const contentC = document.getElementById('content'), styleC = document.getElementById('style'), outC = document.getElementById('out');
+drawContent(contentC);
+function drawStyle() {
+  const st = STYLES[cur];
+  const x = styleC.getContext('2d');
+  x.fillStyle = st.bg; x.fillRect(0, 0, 140, 140);
+  rng2 = (() => { let s = 42; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+  st.brush(x, 140);
+  document.getElementById('styleName').textContent = '② ' + st.name;
+}
+function synth() {
+  const str = +document.getElementById('str').value / 100;
+  const st = STYLES[cur];
+  const x = outC.getContext('2d');
+  x.clearRect(0, 0, 220, 220);
+  /* 内容层 */
+  x.globalAlpha = 1;
+  x.filter = `saturate(${1 + str * 0.8}) contrast(${1 + str * 0.25})`;
+  x.drawImage(contentC, 0, 0, 220, 220);
+  x.filter = 'none';
+  /* 风格层：混合 */
+  x.globalAlpha = str * 0.55;
+  x.globalCompositeOperation = 'overlay';
+  rng2 = (() => { let s = 99; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+  st.brush(x, 220);
+  x.globalCompositeOperation = 'source-over';
+  x.globalAlpha = str * 0.22;
+  x.fillStyle = st.bg;
+  x.fillRect(0, 0, 220, 220);
+  x.globalAlpha = 1;
+}
+document.getElementById('str').addEventListener('input', synth);
+document.getElementById('go').addEventListener('click', synth);
+const stylesEl = document.getElementById('styles');
+Object.entries(STYLES).forEach(([k, st], i) => {
+  const b = document.createElement('button');
+  b.textContent = st.name;
+  if (!i) b.classList.add('on');
+  b.addEventListener('click', () => {
+    stylesEl.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    cur = k;
+    drawStyle(); synth();
+  });
+  stylesEl.append(b);
+});
+drawStyle(); synth();
+</script>
+</body></html>

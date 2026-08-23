@@ -1,0 +1,215 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>动物专家系统实验室</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:16px; gap:12px; overflow-y:auto; }
+  .facts { display:flex; flex-wrap:wrap; gap:8px; }
+  .fact { padding:6px 13px; border-radius:18px; border:1.5px solid var(--border); background:var(--surface); font-size:13px; cursor:pointer; transition:all .15s; }
+  .fact.on { border-color: var(--c2); background: color-mix(in srgb, var(--c2) 12%, transparent); color: var(--c2); font-weight:600; }
+  .fact.off { border-color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); color: var(--err); }
+  .concl { padding:14px 18px; border-radius:12px; border:1.5px dashed var(--border2); background:var(--surface2); font-size:14px; }
+  .concl.hit { border-style: solid; border-color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, transparent); }
+  .qbox { padding:14px 18px; border-radius:12px; border:1.5px solid var(--accent); background:var(--accent-soft); }
+  .qbox .goal { font-size:11.5px; color:var(--muted); margin-bottom:6px; font-family:var(--mono); }
+  .qbox .q { font-size:16px; font-weight:700; margin-bottom:10px; }
+  .qbox .btn-row { margin:0; }
+  .trace { font-family:var(--mono); font-size:12px; line-height:1.9; color:var(--muted); background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .trace b { color: var(--c3); }
+  .trace .fail { color: var(--err); }
+  .rule-edit { display:flex; gap:8px; margin-top:8px; }
+  .hidden { display:none !important; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">动物专家系统</span><span class="s">反向链推理：系统先猜一个目标（"是老虎？"），再倒着问它证明这个目标缺什么证据——只问它当前用得上的问题</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div style="font-size:13px;color:var(--muted)">📋 你已经知道的特征（可选，提前点亮可以让系统跳过对应的提问）：</div>
+    <div class="facts" id="facts"></div>
+    <div class="qbox hidden" id="qbox">
+      <div class="goal" id="qgoal"></div>
+      <div class="q" id="qtext"></div>
+      <div class="btn-row">
+        <button class="btn sm" id="qyes">是 ✓</button>
+        <button class="btn sm ghost" id="qno">否 ✗</button>
+      </div>
+    </div>
+    <div class="concl" id="concl">点击"开始推理"，观察系统怎么反向倒推。</div>
+    <div class="trace" id="trace"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">操作</div>
+    <div class="btn-row">
+      <button class="btn sm" id="infer">开始推理 ▶</button>
+      <button class="btn sm ghost" id="clear">清空重来</button>
+      <button class="btn sm ghost" id="showRules">浏览规则库</button>
+    </div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 知识编辑模式（成为专家）</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">加一条你自己的规则，看看专家系统怎么"吸收知识"：</div>
+      <div class="rule-edit">
+        <input id="rCond" placeholder="条件，如 有长尾巴" style="flex:1">
+        <input id="rConc" placeholder="结论，如 是猴子" style="flex:1">
+      </div>
+      <button class="btn sm ghost" id="addRule" style="margin-top:8px;color:var(--err);border-color:var(--err)">+ 添加规则</button>
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      这套规则库模仿 MYCIN：每条规则形如<b> IF 特征 AND 特征 THEN 结论（置信度）</b>。推理引擎用<b>反向链</b>：先假设一个目标动物，再检查证明它需要哪些证据——证据缺失就<b>主动提问</b>，而不是一次性把所有特征都问一遍。<br><br>
+      想体会 1980 年代的"知识获取瓶颈"？试试给"海豚"加规则——你会发现说不清"不是鱼"该怎么表示。
+    </div>
+  </div>
+</div>
+<script type="module">
+const FEATURES = ['有奶', '有羽毛', '会飞', '不会飞', '会下蛋', '吃肉', '有毛发', '有蹄', '反刍', '黄褐色', '有黑条纹', '有长脖子', '有暗斑点', '住在水里', '善于奔跑', '夜间活动'];
+let RULES = [
+  { id: 'R1', cond: ['有奶'], conc: '是哺乳动物', cf: 0.9 },
+  { id: 'R2', cond: ['有毛发'], conc: '是哺乳动物', cf: 0.85 },
+  { id: 'R3', cond: ['有羽毛'], conc: '是鸟', cf: 0.95 },
+  { id: 'R4', cond: ['会飞', '会下蛋'], conc: '是鸟', cf: 0.9 },
+  { id: 'R5', cond: ['吃肉'], conc: '是食肉动物', cf: 0.8 },
+  { id: 'R6', cond: ['有奶', '有蹄'], conc: '是有蹄类', cf: 0.85 },
+  { id: 'R7', cond: ['是哺乳动物', '反刍'], conc: '是有蹄类', cf: 0.8 },
+  { id: 'R8', cond: ['是哺乳动物', '是食肉动物', '黄褐色', '有黑条纹'], conc: '是老虎 🐯', cf: 0.85, final: true },
+  { id: 'R9', cond: ['是哺乳动物', '是食肉动物', '黄褐色', '有暗斑点'], conc: '是豹 🐆', cf: 0.82, final: true },
+  { id: 'R10', cond: ['是哺乳动物', '有长脖子', '有暗斑点', '有蹄'], conc: '是长颈鹿 🦒', cf: 0.8, final: true },
+  { id: 'R11', cond: ['是鸟', '不会飞', '善于奔跑'], conc: '是鸵鸟 🦤', cf: 0.75, final: true },
+  { id: 'R12', cond: ['是鸟', '不会飞', '夜间活动'], conc: '是企鹅 🐧', cf: 0.75, final: true },
+  { id: 'R13', cond: ['是哺乳动物', '住在水里'], conc: '是海豚 🐬', cf: 0.7, final: true },
+];
+
+const factsEl = document.getElementById('facts');
+const preChecked = new Set(); /* 用户提前点亮的事实（不代表"否"，只代表"是"） */
+function renderFactButtons() {
+  factsEl.innerHTML = '';
+  FEATURES.forEach(f => {
+    const b = document.createElement('button');
+    b.className = 'fact' + (preChecked.has(f) ? ' on' : '');
+    b.textContent = f;
+    b.addEventListener('click', () => {
+      preChecked.has(f) ? preChecked.delete(f) : preChecked.add(f);
+      b.classList.toggle('on', preChecked.has(f));
+    });
+    factsEl.append(b);
+  });
+}
+renderFactButtons();
+
+document.getElementById('clear').addEventListener('click', () => {
+  preChecked.clear();
+  renderFactButtons();
+  document.getElementById('concl').textContent = '点击"开始推理"，观察系统怎么反向倒推。';
+  document.getElementById('concl').className = 'concl';
+  document.getElementById('trace').innerHTML = '';
+  document.getElementById('qbox').classList.add('hidden');
+  session = null;
+});
+
+/* ---------- 反向链推理引擎（生成器：需要新证据时暂停，等用户回答后再继续） ---------- */
+let session = null; /* { known, knownFalse, trace, gen } */
+
+function ruleFor(goal) { return RULES.filter(r => r.conc === goal); }
+function isGoal(name) { return RULES.some(r => r.conc === name); }
+
+function* proveFact(name, depth) {
+  const { known, knownFalse } = session;
+  if (known.has(name)) return true;
+  if (knownFalse.has(name)) return false;
+  if (isGoal(name)) {
+    const cf = yield* proveGoal(name, depth + 1);
+    return cf !== false;
+  }
+  if (preChecked.has(name)) { known.add(name); return true; }
+  const ans = yield { ask: name, depth };
+  if (ans) known.add(name); else knownFalse.add(name);
+  return ans;
+}
+function* proveGoal(goal, depth = 0) {
+  const { known, knownFalse, trace } = session;
+  const indent = '　'.repeat(depth);
+  trace.push(`${indent}为了证明「<b>${goal}</b>」，检查相关规则…`);
+  for (const r of ruleFor(goal)) {
+    trace.push(`${indent}→ 尝试 <b>${r.id}</b>：需要 ${r.cond.join(' ∧ ')}`);
+    let ok = true;
+    for (const cond of r.cond) {
+      const proven = yield* proveFact(cond, depth);
+      if (!proven) { trace.push(`${indent}　✗ 「${cond}」不成立，${r.id} 失败`); ok = false; break; }
+    }
+    if (ok) {
+      known.add(goal);
+      trace.push(`${indent}✓ ${r.id} 全部条件满足 → <b>${goal}</b>（置信度 ${r.cf}）`);
+      session.lastCf = r.cf;
+      return r.cf;
+    }
+  }
+  knownFalse.add(goal); /* 记住这个目标已被证伪，之后别的候选目标复用同一子目标时不用重问 */
+  trace.push(`${indent}排除「${goal}」：找不到能满足的规则`);
+  return false;
+}
+function* runInfer() {
+  const goals = RULES.filter(r => r.final).map(r => r.conc).filter((v, i, a) => a.indexOf(v) === i);
+  for (const g of goals) {
+    const cf = yield* proveGoal(g);
+    if (cf !== false) return { goal: g, cf };
+  }
+  return null;
+}
+
+document.getElementById('infer').addEventListener('click', () => {
+  session = { known: new Set(), knownFalse: new Set(), trace: [], lastCf: 0 };
+  document.getElementById('concl').className = 'concl';
+  document.getElementById('concl').textContent = '推理中…';
+  const gen = runInfer();
+  session.gen = gen;
+  step(gen.next());
+});
+function step(res) {
+  renderTrace();
+  if (res.done) {
+    document.getElementById('qbox').classList.add('hidden');
+    if (res.value) {
+      document.getElementById('concl').className = 'concl hit';
+      document.getElementById('concl').innerHTML = `🎯 结论：<b>${res.value.goal}</b>（综合置信度约 ${(res.value.cf * 100).toFixed(0)}%）`;
+    } else {
+      document.getElementById('concl').className = 'concl';
+      document.getElementById('concl').innerHTML = '🤔 所有候选假设都被排除了，证据不足以断定是哪种动物。';
+    }
+    return;
+  }
+  const { ask, depth } = res.value;
+  document.getElementById('qbox').classList.remove('hidden');
+  document.getElementById('qgoal').textContent = '为了继续推理，系统需要知道：';
+  document.getElementById('qtext').textContent = `${ask} ？`;
+  const answer = ok => {
+    document.getElementById('qbox').classList.add('hidden');
+    const f = ok ? 'on' : 'off';
+    if (FEATURES.includes(ask)) {
+      renderFactButtons();
+      const btn = [...factsEl.children].find(b => b.textContent === ask);
+      if (btn) btn.classList.add(f);
+    }
+    step(session.gen.next(ok));
+  };
+  document.getElementById('qyes').onclick = () => answer(true);
+  document.getElementById('qno').onclick = () => answer(false);
+}
+function renderTrace() {
+  document.getElementById('trace').innerHTML = session.trace.length
+    ? `<b>推理路径（反向链 / 目标分解记录）：</b><br>` + session.trace.join('<br>')
+    : '';
+}
+
+document.getElementById('showRules').addEventListener('click', () => {
+  document.getElementById('trace').innerHTML = `<b>规则库（${RULES.length} 条）：</b><br>` +
+    RULES.map(r => `<b>${r.id}</b> IF ${r.cond.join(' ∧ ')} THEN ${r.conc}`).join('<br>');
+});
+document.getElementById('addRule').addEventListener('click', () => {
+  const c = document.getElementById('rCond').value.trim();
+  const k = document.getElementById('rConc').value.trim();
+  if (!c || !k) return;
+  const id = 'R' + (RULES.length + 1);
+  const cond = c.split(/[，,、\s]+/).filter(Boolean);
+  RULES.push({ id, cond, conc: k, cf: 0.6, final: true }); /* 用户加的规则自动成为可推理的目标 */
+  document.getElementById('rCond').value = ''; document.getElementById('rConc').value = '';
+  cond.forEach(f => { if (!FEATURES.includes(f)) FEATURES.push(f); });
+  renderFactButtons();
+  document.getElementById('trace').innerHTML = `<b style="color:var(--err)">已添加 ${id}</b> IF ${c} THEN ${k}（置信度 0.6）——点「开始推理」试试效果，它现在也是一个可以被反向证明的目标`;
+});
+</script>
+</body></html>

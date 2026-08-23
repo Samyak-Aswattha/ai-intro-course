@@ -1,0 +1,288 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>规模法则实验室</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; }
+  canvas#cv { position:absolute; inset:0; width:100%; height:100%; }
+  .hud { position:absolute; right:12px; top:12px; width:210px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 12px; font-size:11.5px; line-height:1.8; }
+  .hud b { font-family:var(--mono); color:var(--accent); }
+  .modetabs { display:flex; gap:4px; margin-bottom:12px; }
+  .modetabs button { flex:1; padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:var(--surface); font-size:12px; color:var(--muted); cursor:pointer; font-family:var(--font); }
+  .modetabs button.on { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); font-weight:700; }
+  .budget-card { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:12px; font-size:12.5px; line-height:1.7; }
+  .budget-card .n { font-family:var(--mono); font-size:17px; font-weight:700; color:var(--accent); }
+  .score-row { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:10px; }
+  .score-row b { color:var(--text); font-family:var(--mono); }
+  .reveal-card { border-radius:10px; padding:10px 12px; margin-bottom:12px; font-size:12.5px; line-height:1.8; border:1.5px solid var(--border); }
+  .reveal-card.good { border-color:var(--ok); background:color-mix(in srgb, var(--ok) 8%, transparent); }
+  .reveal-card.mid { border-color:var(--warn); background:color-mix(in srgb, var(--warn) 8%, transparent); }
+  .reveal-card.bad { border-color:var(--err); background:color-mix(in srgb, var(--err) 8%, transparent); }
+  .milestone { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.35); z-index:5; }
+  .milestone .card { width:300px; text-align:center; }
+  .milestone .big { font-size:30px; font-weight:800; color:var(--accent); margin:8px 0; }
+  .hidden { display:none !important; }
+</style></head><body>
+<div class="demo-head"><span class="badge">新·2026</span><span class="t">规模法则 · Scaling Laws 实验室</span><span class="s">给定一笔固定算力预算，你会怎么分配参数量和数据量？先猜，再看 Chinchilla 的答案</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="hud">
+      模型规模 <b id="v1">—</b><br>
+      数据量 <b id="v2">—</b><br>
+      算力 <b id="v3">—</b><br>
+      预测损失 <b id="v4" style="font-size:16px">—</b><br>
+      <span style="color:var(--muted)" id="v5"></span>
+    </div>
+    <div class="milestone hidden" id="milestone">
+      <div class="card">
+        <div style="font-size:12px;color:var(--muted);letter-spacing:.06em">第 <span id="msRound">5</span> 轮小结</div>
+        <div class="big" id="msScore">—</div>
+        <div id="msVerdict" style="font-size:13px;line-height:1.7;margin:8px 0"></div>
+        <button class="btn sm" id="msClose">继续 ▶</button>
+      </div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="modetabs">
+      <button id="tabChallenge" class="on">🎯 挑战模式</button>
+      <button id="tabExplore">🔬 自由探索</button>
+    </div>
+
+    <div id="challengePane">
+      <div class="score-row"><span>第 <b id="roundNo">1</b> 轮</span><span>平均得分 <b id="avgScore">—</b></span></div>
+      <div class="budget-card">
+        本轮算力预算：<span class="n" id="budgetN">—</span><br>
+        <span style="color:var(--muted);font-size:11.5px">拖动下面的滑杆分配参数量，剩下的算力自动换算成数据量。锁定后看你离 Chinchilla 最优差多远。</span>
+      </div>
+      <div id="guessCtl"></div>
+      <div class="btn-row">
+        <button class="btn" id="lockIn">锁定我的选择 🔒</button>
+        <button class="btn ghost hidden" id="nextRound">下一轮 →</button>
+      </div>
+      <div id="revealBox"></div>
+    </div>
+
+    <div id="explorePane" class="hidden">
+      <div class="panel-title">三要素（自由调节）</div>
+      <div id="ctls"></div>
+    </div>
+
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 历史实验</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      Kaplan (2020)：损失 ∝ 参数量的幂律——大就是好。Chinchilla (2022)：同样算力下，<b>参数与数据要同步放大</b>，此前的大模型全都"没喂饱"。2024 兴起"失效论"，2026 的答案是：<b>预训练收益递减，但后训练（RL）接过了接力棒</b>——规模法则没有死，只是换了赛道。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, slider, brkSwitch } from '../_shared/demo.js';
+const cv = document.getElementById('cv');
+const ctx = autoFit(cv, draw);
+let N = 7, D = 1.4, C = 1, physMode = 'chinchilla';
+const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+/* Chinchilla: L = 1.69 + 406.4/N^0.34 + 410.7/D^0.28 （N 单位 1e13, D 单位 1e13） */
+function lossAt(n, d) {
+  if (physMode === 'fixed-data') d = Math.min(d, 300 / n);   /* 数据跟不上 */
+  return 1.69 + 406.4 / Math.pow(n, 0.34) + 410.7 / Math.pow(d, 0.28);
+}
+function optimalN(c) { /* 给定算力的最优参数量（Chinchilla: N_opt ∝ C^0.5）*/ return Math.pow(c * 0.6, 0.5); }
+
+/* ---------- 挑战模式状态 ---------- */
+let uiMode = 'challenge';
+const BUDGETS = [3, 8, 16, 30, 55, 90];
+let round = 0, scoreSum = 0, scoreCount = 0, lastBudget = -1;
+let C_target = pickBudget(), phase = 'guessing', challengeN = 25;
+let reveal = null; /* {optN, optD, optLoss, userLoss} */
+
+function pickBudget() {
+  let b;
+  do { b = BUDGETS[Math.floor(Math.random() * BUDGETS.length)]; } while (b === lastBudget && BUDGETS.length > 1);
+  lastBudget = b;
+  return b;
+}
+function challengeD(n) { return 20 * (C_target / n); }
+/* 数值扫描找真实最小点 —— 解析近似公式 optimalN() 只是原版 demo 里的粗略提示，
+   和真正的曲线最低点不严格重合；挑战模式的"最优答案"必须是曲线的真实最小值，
+   否则玩家的猜测有可能反而比揭晓的"最优解"更低，评分逻辑就崩了 */
+function findCurveMin(dOfN) {
+  let best = { n: 1, L: Infinity };
+  for (let n = 0.5; n <= 300; n *= 1.004) {
+    const L = lossAt(n, dOfN(n));
+    if (L < best.L) best = { n, L };
+  }
+  return best;
+}
+let roundOptN = 1, roundOptD = 1, roundOptLoss = Infinity;
+
+function renderGuessCtl() {
+  const box = document.getElementById('guessCtl');
+  box.innerHTML = '';
+  box.append(slider({
+    label: '你的参数量分配', min: 1, max: 300, value: challengeN, fmt: v => (v * 10) + 'B',
+    onInput: v => { challengeN = v; draw(); }
+  }));
+}
+function startRound() {
+  round++;
+  C_target = pickBudget();
+  phase = 'guessing';
+  reveal = null;
+  const trueOpt = findCurveMin(challengeD);
+  roundOptN = trueOpt.n; roundOptD = challengeD(roundOptN); roundOptLoss = trueOpt.L;
+  challengeN = Math.round(roundOptN) + (Math.random() < 0.5 ? -12 : 12); /* 故意偏离最优点起步 */
+  challengeN = Math.max(1, Math.min(300, challengeN));
+  document.getElementById('roundNo').textContent = round;
+  document.getElementById('budgetN').textContent = C_target + '×';
+  document.getElementById('revealBox').innerHTML = '';
+  document.getElementById('lockIn').classList.remove('hidden');
+  document.getElementById('nextRound').classList.add('hidden');
+  renderGuessCtl();
+  draw();
+}
+function lockIn() {
+  const userD = challengeD(challengeN);
+  const userLoss = lossAt(challengeN, userD);
+  const optN = roundOptN, optD = roundOptD, optLoss = roundOptLoss;
+  reveal = { optN, optD, optLoss, userLoss };
+  phase = 'revealed';
+  const gap = userLoss - optLoss;
+  let grade, cls, pts;
+  if (gap < 0.03) { grade = '🎯 几乎精准命中'; cls = 'good'; pts = 100; }
+  else if (gap < 0.08) { grade = '👍 很接近了'; cls = 'good'; pts = 80; }
+  else if (gap < 0.2) { grade = '还行，有偏差'; cls = 'mid'; pts = 55; }
+  else { grade = '偏离较远'; cls = 'bad'; pts = 25; }
+  scoreSum += pts; scoreCount++;
+  document.getElementById('avgScore').textContent = Math.round(scoreSum / scoreCount);
+  const dir = challengeN > optN ? '参数给多了、数据没跟上' : challengeN < optN ? '参数给少了、算力浪费在数据上' : '刚好';
+  document.getElementById('revealBox').innerHTML = `<div class="reveal-card ${cls}">
+    <b>${grade}</b><br>
+    你的损失：<b style="font-family:var(--mono)">${userLoss.toFixed(3)}</b>　最优损失：<b style="font-family:var(--mono)">${optLoss.toFixed(3)}</b><br>
+    Chinchilla 最优参数量：<b style="font-family:var(--mono)">${(optN*10).toFixed(0)}B</b>（你选了 ${(challengeN*10).toFixed(0)}B）<br>
+    <span style="color:var(--muted)">${dir}</span>
+  </div>`;
+  document.getElementById('lockIn').classList.add('hidden');
+  document.getElementById('nextRound').classList.remove('hidden');
+  draw();
+  if (round % 5 === 0) showMilestone();
+}
+function showMilestone() {
+  const avg = Math.round(scoreSum / scoreCount);
+  document.getElementById('msRound').textContent = round;
+  document.getElementById('msScore').textContent = avg;
+  const verdict = avg >= 85 ? '你已经在凭直觉复现 Chinchilla 的结论了——参数和数据要同步放大，不是越大越好。'
+    : avg >= 60 ? '方向感已经出来了：算力有限时，参数和数据谁也不能少喂。'
+    : '还在"越大越好"的直觉里——试试每次都往 Chinchilla 最优点靠一点。';
+  document.getElementById('msVerdict').textContent = verdict;
+  document.getElementById('milestone').classList.remove('hidden');
+}
+document.getElementById('msClose').addEventListener('click', () => document.getElementById('milestone').classList.add('hidden'));
+document.getElementById('lockIn').addEventListener('click', lockIn);
+document.getElementById('nextRound').addEventListener('click', startRound);
+
+document.getElementById('tabChallenge').addEventListener('click', () => switchUIMode('challenge'));
+document.getElementById('tabExplore').addEventListener('click', () => switchUIMode('explore'));
+function switchUIMode(m) {
+  uiMode = m;
+  document.getElementById('tabChallenge').classList.toggle('on', m === 'challenge');
+  document.getElementById('tabExplore').classList.toggle('on', m === 'explore');
+  document.getElementById('challengePane').classList.toggle('hidden', m !== 'challenge');
+  document.getElementById('explorePane').classList.toggle('hidden', m !== 'explore');
+  draw();
+}
+
+/* 沿曲线扫描找最低点 —— 用真实最小值动态定 Y 轴范围，而不是固定死区间
+   （固定区间会导致原始公式在整个滑杆范围内的输出远超区间上限，当前点永远被顶在图表最上方，看不出任何差异） */
+function curveFloor(dOfN) {
+  let lo = Infinity;
+  for (let n = 0.5; n <= 300; n *= 1.02) { const L = lossAt(n, dOfN(n)); if (L < lo) lo = L; }
+  return lo;
+}
+
+/* ---------- 绘制 ---------- */
+function draw() {
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+  const X = n => 46 + (Math.log10(n) + 0.7) / (Math.log10(3000) + 0.7) * (w - 220);
+
+  const floor = uiMode === 'challenge' ? roundOptLoss : curveFloor(n => Math.max(0.02, C * 0.17 / (n / optimalN(C))));
+  const yLo = floor * 0.95, yHi = floor * 1.8;
+  const Y = L => h - 40 - (clampL(L) - yLo) / (yHi - yLo) * (h - 80);
+  const clampL = L => Math.min(yHi, L);
+
+  ctx.strokeStyle = cssv('--border'); ctx.fillStyle = cssv('--muted'); ctx.font = '10px sans-serif';
+  for (let i = 0; i <= 4; i++) { const L = yLo + (yHi - yLo) * i / 4; ctx.beginPath(); ctx.moveTo(40, Y(L)); ctx.lineTo(w - 170, Y(L)); ctx.stroke(); ctx.fillText('L=' + L.toFixed(2), 8, Y(L) + 3); }
+  [1, 10, 100, 1000].forEach(n => ctx.fillText(n + 'B', X(n * 0.1) - 8, h - 22));
+  ctx.fillText('参数量（对数轴）', w / 2 - 40, h - 8);
+  for (const c of [1, 10, 100, 1000]) {
+    ctx.strokeStyle = 'rgba(122,116,105,.28)';
+    ctx.beginPath();
+    for (let n = 0.1; n <= 300; n *= 1.08) {
+      const d = 20 * Math.pow(c / n, 1);
+      const L = lossAt(n, d);
+      n === 0.1 ? ctx.moveTo(X(n), Y(L)) : ctx.lineTo(X(n), Y(L));
+    }
+    ctx.stroke();
+  }
+
+  if (uiMode === 'challenge') {
+    /* 本轮预算的等算力曲线加粗高亮 */
+    ctx.strokeStyle = cssv('--c3'); ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let n = 0.1; n <= 300; n *= 1.03) {
+      const d = challengeD(n);
+      const L = lossAt(n, d);
+      n === 0.1 ? ctx.moveTo(X(n), Y(L)) : ctx.lineTo(X(n), Y(L));
+    }
+    ctx.stroke(); ctx.lineWidth = 1;
+    /* 用户当前点 */
+    const uD = challengeD(challengeN), uL = lossAt(challengeN, uD);
+    ctx.fillStyle = cssv('--accent');
+    ctx.beginPath(); ctx.arc(X(challengeN), Y(uL), 7, 0, 7); ctx.fill();
+    ctx.fillStyle = cssv('--text'); ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('你的选择', X(challengeN) + 10, Y(uL) - 8);
+    if (reveal) {
+      ctx.fillStyle = cssv('--ok');
+      ctx.beginPath(); ctx.arc(X(reveal.optN), Y(reveal.optLoss), 7, 0, 7); ctx.fill();
+      ctx.fillStyle = cssv('--ok'); ctx.font = 'bold 11px sans-serif';
+      ctx.fillText('最优点', X(reveal.optN) + 10, Y(reveal.optLoss) + 16);
+    }
+    upd(uL, challengeN, uD, roundOptN);
+    ctx.fillStyle = cssv('--muted'); ctx.font = '10.5px sans-serif';
+    ctx.fillText('灰：等算力前沿　蓝粗线：本轮预算前沿', w - 230, 20);
+  } else {
+    ctx.strokeStyle = cssv('--c3'); ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let n = 0.1; n <= 300; n *= 1.03) {
+      const d = Math.max(0.02, C * 0.17 / (n / optimalN(C)));
+      const L = lossAt(n, d);
+      n === 0.1 ? ctx.moveTo(X(n), Y(L)) : ctx.lineTo(X(n), Y(L));
+    }
+    ctx.stroke(); ctx.lineWidth = 1;
+    const L = lossAt(N, D * 20);
+    ctx.fillStyle = cssv('--accent');
+    ctx.beginPath(); ctx.arc(X(N), Y(L), 7, 0, 7); ctx.fill();
+    ctx.fillStyle = cssv('--text'); ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('当前模型', X(N) + 10, Y(L) - 8);
+    ctx.fillStyle = cssv('--muted'); ctx.font = '10.5px sans-serif';
+    ctx.fillText('灰：等算力前沿（越靠左上算力越大）', w - 230, 20);
+    ctx.fillText('橙：当前数据预算下的损失曲线', w - 230, 34);
+    upd(L, N, D * 20, optimalN(N * D * 6));
+  }
+}
+function upd(L, n, d, nOpt) {
+  document.getElementById('v1').textContent = (n * 10).toFixed(0) + 'B 参数';
+  document.getElementById('v2').textContent = (d).toFixed(0) + 'B tokens';
+  document.getElementById('v3').textContent = (n * d * 6).toFixed(0) + ' PF-days';
+  document.getElementById('v4').textContent = L.toFixed(2);
+  document.getElementById('v5').textContent = physMode === 'fixed-data' ? '⚠ 数据瓶颈模式：加参数已几乎不降损失' : (n > nOpt * 1.4 ? '参数过剩（数据不足）' : n < nOpt * 0.7 ? '数据过剩（模型太小）' : '≈ Chinchilla 最优配比 ✓');
+}
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '模型参数量', min: 1, max: 300, value: 70, fmt: v => (v * 10) + 'B', onInput: v => { N = v; draw(); } }));
+ctls.append(slider({ label: '训练数据量', min: 2, max: 300, value: 140, fmt: v => (v * 10) + 'B tok', onInput: v => { D = v / 100; draw(); } }));
+ctls.append(slider({ label: '训练算力', min: 1, max: 100, value: 50, fmt: v => v + '×', onInput: v => { C = v; draw(); } }));
+document.getElementById('bz').append(brkSwitch('数据瓶颈（2024 失效论场景）', v => { physMode = v ? 'fixed-data' : 'chinchilla'; draw(); }));
+
+startRound();
+</script>
+</body></html>

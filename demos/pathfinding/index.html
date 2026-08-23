@@ -1,0 +1,205 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>迷宫搜索实验室</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; display:flex; align-items:center; justify-content:center; padding:10px; }
+  .board { display:grid; gap:2px; }
+  .cell { width:var(--cs, 20px); height:var(--cs, 20px); border-radius:3px; background:var(--surface); border:1px solid var(--border); position:relative; }
+  .cell.wall { background:var(--border2); border-color:var(--border2); }
+  .cell.start::after { content:"🚩"; position:absolute; inset:0; display:grid; place-items:center; font-size:calc(var(--cs) * .62); }
+  .cell.goal::after { content:"🎯"; position:absolute; inset:0; display:grid; place-items:center; font-size:calc(var(--cs) * .62); }
+  .cell.open { background:color-mix(in srgb, var(--info) 22%, var(--surface)); border-color:transparent; }
+  .cell.path { background:var(--accent); border-color:var(--accent); }
+  .cell.seen { background:color-mix(in srgb, var(--info) 45%, var(--surface)); border-color:transparent; }
+  .cell.frontier { background:color-mix(in srgb, var(--warn) 45%, var(--surface)); border-color:transparent; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">迷宫搜索对比：BFS / DFS / 贪心 / A*</span><span class="s">点击格子画墙，拖不动的四条算法逐格展开——看谁的探索范围最小、路径最优</span></div>
+<div class="demo-body">
+  <div class="stage"><div class="board" id="board"></div></div>
+  <div class="demo-panel">
+    <div class="panel-title">算法</div>
+    <div class="tabs" id="algos"></div>
+    <div class="btn-row">
+      <button class="btn sm" id="run">运行 ▶</button>
+      <button class="btn sm ghost" id="step">单步</button>
+      <button class="btn sm ghost" id="rnd">随机迷宫</button>
+      <button class="btn sm ghost" id="clr">清墙</button>
+    </div>
+    <div class="readout" id="ro"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它：坏启发式</div></div>
+    <div class="ctl"><label><span>动画速度</span><b id="spdV"></b></label><input type="range" id="spd" min="1" max="20" value="8"></div>
+    <div class="card" style="font-size:12px;color:var(--muted);line-height:1.75">
+      <b style="color:var(--text)">BFS</b> 洪水般均匀展开：保证最短路，但探索面大。<br>
+      <b style="color:var(--text)">DFS</b> 一条道走到黑：省内存，路径歪七扭八。<br>
+      <b style="color:var(--text)">贪心最佳优先</b> 只看离终点估计：快但常被墙骗。<br>
+      <b style="color:var(--text)">A*</b> = 已走代价 + 启发估计：又准又省（好启发时）。<br>
+      打开「坏启发式」，A* 会退化——被随机的估计牵着鼻子走。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { brkSwitch, RNG } from '../_shared/demo.js';
+const W = 33, H = 21;
+const board = document.getElementById('board');
+board.style.setProperty('--cs', 'clamp(11px, 1.6vw, 20px)');
+board.style.gridTemplateColumns = `repeat(${W}, var(--cs))`;
+const cells = [];
+let start = [2, Math.floor(H / 2)], goal = [W - 3, Math.floor(H / 2)];
+let walls = new Set();
+let badH = false, running = false, raf = null;
+
+const key = (x, y) => x + ',' + y;
+function build() {
+  board.innerHTML = '';
+  cells.length = 0;
+  for (let y = 0; y < H; y++) {
+    const row = [];
+    for (let x = 0; x < W; x++) {
+      const d = document.createElement('div');
+      d.className = 'cell';
+      if (walls.has(key(x, y))) d.classList.add('wall');
+      if (x === start[0] && y === start[1]) d.classList.add('start');
+      if (x === goal[0] && y === goal[1]) d.classList.add('goal');
+      d.addEventListener('mousedown', e => { e.preventDefault(); toggleWall(x, y); });
+      d.addEventListener('mouseenter', e => { if (e.buttons === 1) toggleWall(x, y, true); });
+      board.append(d);
+      row.push(d);
+    }
+    cells.push(row);
+  }
+}
+function toggleWall(x, y, force) {
+  if ((x === start[0] && y === start[1]) || (x === goal[0] && y === goal[1])) return;
+  if (walls.has(key(x, y))) { walls.delete(key(x, y)); cells[y][x].classList.remove('wall'); }
+  else { walls.add(key(x, y)); cells[y][x].classList.add('wall'); }
+}
+
+const ALGOS = {
+  bfs: { name: 'BFS 宽度优先', h: () => 0, cost: true },
+  dfs: { name: 'DFS 深度优先', h: () => 0, dfs: true },
+  greedy: { name: '贪心最佳优先', h: hMan, },
+  astar: { name: 'A*', h: hMan, g: true },
+};
+function hMan(x, y) {
+  const d = Math.abs(x - goal[0]) + Math.abs(y - goal[1]);
+  return badH ? (d * 3 + Math.sin(x * 7.3) * 8 + Math.cos(y * 5.1) * 8) : d;
+}
+
+/* 通用搜索器：返回生成器，逐帧 yield {type, x, y} */
+function* search(algo) {
+  const open = [{ x: start[0], y: start[1], g: 0, f: hMan(start[0], start[1]), parent: null }];
+  const seen = new Set([key(start[0], start[1])]);
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let expanded = 0;
+  while (open.length) {
+    let idx = 0;
+    if (ALGOS[algo].dfs) {
+      let best = -Infinity;
+      open.forEach((n, i) => { if (n.f > best) { best = n.f; idx = i; } }); // DFS: 深的优先（f 当深度用，倒序）
+      open.forEach((n, i) => { if (n.g > open[idx].g) idx = i; });
+    } else {
+      open.forEach((n, i) => { if (n.f < open[idx].f) idx = i; });
+    }
+    const cur = open.splice(idx, 1)[0];
+    expanded++;
+    yield { type: 'seen', x: cur.x, y: cur.y };
+    if (cur.x === goal[0] && cur.y === goal[1]) {
+      const path = [];
+      let p = cur;
+      while (p) { path.push(p); p = p.parent; }
+      for (const n of path.reverse()) yield { type: 'path', x: n.x, y: n.y };
+      yield { type: 'done', expanded, len: path.length };
+      return;
+    }
+    for (const [dx, dy] of dirs) {
+      const nx = cur.x + dx, ny = cur.y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H || walls.has(key(nx, ny))) continue;
+      const k = key(nx, ny);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const g = cur.g + 1;
+      const isA = algo === 'astar', isG = algo === 'greedy';
+      open.push({ x: nx, y: ny, g, f: isA ? g + hMan(nx, ny) : isG ? hMan(nx, ny) : g, parent: cur });
+      yield { type: 'frontier', x: nx, y: ny };
+    }
+  }
+  yield { type: 'fail', expanded };
+}
+
+let curAlgo = 'astar', gen = null, frontierSet = new Set(), seenSet = new Set();
+const ro = document.getElementById('ro');
+function clearMarks() {
+  frontierSet.clear(); seenSet.clear();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    cells[y][x].classList.remove('open', 'path', 'seen', 'frontier');
+  }
+}
+function paint(e) {
+  if (!e) return;
+  const el = cells[e.y]?.[e.x];
+  if (!el) return;
+  if (e.type === 'frontier') { el.classList.add('frontier'); frontierSet.add(key(e.x, e.y)); }
+  if (e.type === 'seen') { el.classList.remove('frontier'); el.classList.add('seen'); seenSet.add(key(e.x, e.y)); }
+  if (e.type === 'path') { el.classList.add('path'); }
+  if (e.type === 'done') {
+    stopRun();
+    ro.innerHTML = `✅ 完成\n探索格子：<b>${e.expanded}</b>　路径长度：<b>${e.len - 1}</b> 步`;
+  }
+  if (e.type === 'fail') { stopRun(); ro.innerHTML = `❌ 无法到达（被墙围死）\n探索格子：${e.expanded}`; }
+}
+function stopRun() { running = false; document.getElementById('run').textContent = '运行 ▶'; }
+function tick() {
+  if (!running) return;
+  const n = +document.getElementById('spd').value;
+  for (let i = 0; i < n; i++) {
+    const r = gen.next();
+    if (r.done) { stopRun(); return; }
+    paint(r.value);
+  }
+  ro.innerHTML = `运行中… 已探索 ${seenSet.size} 格`;
+  raf = requestAnimationFrame(tick);
+}
+const algosEl = document.getElementById('algos');
+Object.entries(ALGOS).forEach(([k, a], i) => {
+  const b = document.createElement('button');
+  b.textContent = a.name;
+  if (k === curAlgo) b.classList.add('on');
+  b.addEventListener('click', () => {
+    curAlgo = k;
+    algosEl.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    clearMarks(); gen = null;
+    ro.textContent = `已选 ${a.name}，按「运行」`;
+  });
+  algosEl.append(b);
+});
+document.getElementById('run').addEventListener('click', () => {
+  if (running) { stopRun(); return; }
+  clearMarks();
+  gen = search(curAlgo);
+  running = true;
+  document.getElementById('run').textContent = '暂停 ■';
+  ro.textContent = '运行中…';
+  raf = requestAnimationFrame(tick);
+});
+document.getElementById('step').addEventListener('click', () => {
+  if (!gen) { clearMarks(); gen = search(curAlgo); }
+  for (let i = 0; i < 3; i++) { const r = gen.next(); if (r.done) break; paint(r.value); }
+});
+document.getElementById('spdV').textContent = '8';
+document.getElementById('clr').addEventListener('click', () => { walls.clear(); clearMarks(); build(); });
+document.getElementById('rnd').addEventListener('click', () => {
+  walls.clear();
+  const rng = RNG(Math.floor(Math.random() * 9999));
+  /* 随机障碍 + 保证稀疏 */
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if ((x === start[0] && y === start[1]) || (x === goal[0] && y === goal[1])) continue;
+    if (rng() < 0.28) walls.add(key(x, y));
+  }
+  clearMarks(); build();
+});
+document.getElementById('bz').append(brkSwitch('给 A* 一个"坏启发式"（随机扰动）', v => { badH = v; clearMarks(); }));
+build();
+ro.textContent = '已选 A*，按「运行」。点击格子画墙。';
+</script>
+</body></html>

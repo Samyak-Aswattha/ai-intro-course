@@ -1,0 +1,119 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>Seq2Seq 翻译机</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; gap:14px; padding:16px; overflow-y:auto; }
+  .row2 { display:flex; gap:14px; flex-wrap:wrap; }
+  .tower { flex:1; min-width:220px; border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:12px; }
+  .tower h4 { margin:0 0 8px; font-size:12.5px; color:var(--muted); }
+  .steps { display:flex; flex-direction:column; gap:4px; }
+  .stepline { display:flex; align-items:center; gap:8px; font-size:13.5px; padding:5px 8px; border-radius:8px; transition:all .3s; }
+  .stepline.on { background:var(--accent-soft); font-weight:700; }
+  .stepline.done { opacity: .55; }
+  .vec { flex:1; min-width:220px; border:1.5px dashed var(--c3); border-radius:12px; padding:12px; background:var(--surface2); }
+  .vec h4 { margin:0 0 8px; font-size:12.5px; color:var(--c3); }
+  .vecbars { display:flex; gap:3px; align-items:flex-end; height:70px; padding:0 4px; }
+  .vb { width:10px; background:var(--c3); border-radius:3px 3px 0 0; transition:height .35s cubic-bezier(.3,.8,.3,1); opacity:.85; }
+  .outtext { font-size:16px; min-height:1.8em; line-height:1.8; }
+  .outtext b { color:var(--ok); }
+</style></head><body>
+<div class="demo-head"><span class="badge">动画</span><span class="t">Seq2Seq · 压缩再展开</span><span class="s">选一句翻译，看编码器逐步压缩成向量、解码器逐词展开——句子越长，中间向量越"挤"</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="row2">
+      <div class="tower"><h4>🔤 编码器（读入）</h4><div class="steps" id="enc"></div></div>
+      <div class="vec"><h4>📦 语义向量（信息瓶颈）</h4><div class="vecbars" id="vbars"></div><div style="font-size:11.5px;color:var(--muted);margin-top:6px" id="vnote">固定 40 维——不管句子多长都压进这里</div></div>
+      <div class="tower"><h4>🌍 解码器（展开）</h4><div class="steps" id="dec"></div></div>
+    </div>
+    <div class="outtext" id="out">选择右侧句子并按「翻译」。</div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">句子</div>
+    <div id="sents"></div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn sm" id="run">翻译 ▶</button>
+      <button class="btn sm ghost" id="reset">重置</button>
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      试对比 1 号短句与 3 号长句的<b>语义向量饱和度</b>——长句的向量条形挤在一起、彼此覆盖。<br><br>
+      这就是 Seq2Seq 的瓶颈：<b>一个向量装不下一整段话的所有细节</b>。解药是让解码器每一步"回头看"原文——注意力机制（下一节）。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { RNG } from '../_shared/demo.js';
+const PAIRS = [
+  { zh: ['我', '爱', '你'], en: ['I', 'love', 'you'], note: '三词短句：向量轻松装下' },
+  { zh: ['今天', '的', '天气', '非常', '好'], en: ['The', 'weather', 'is', 'very', 'nice', 'today'], note: '中等长度：细节开始拥挤' },
+  { zh: ['那个', '穿着', '红色', '外套', '的', '女孩', '昨天', '在', '图书馆', '借了', '三本', '关于', '哲学', '的书'], en: ['The', 'girl', 'in', 'the', 'red', 'coat', 'borrowed', 'three', 'books', 'on', 'philosophy', 'from', 'the', 'library', 'yesterday'], note: '十四词长句：40 维向量严重超载——细节互相覆盖' },
+];
+let si = 0, vec = new Array(40).fill(0);
+const encEl = document.getElementById('enc'), decEl = document.getElementById('dec');
+function renderSents() {
+  const box = document.getElementById('sents');
+  box.innerHTML = '';
+  PAIRS.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.className = 'btn sm ghost';
+    b.style.cssText = 'display:block;width:100%;margin-bottom:6px;text-align:left;font-size:12px';
+    b.textContent = `${i + 1}. ${p.zh.join('')}`;
+    b.addEventListener('click', () => {
+      si = i;
+      box.querySelectorAll('button').forEach(x => x.style.borderColor = '');
+      b.style.borderColor = 'var(--accent)';
+      reset();
+    });
+    box.append(b);
+  });
+}
+function reset() {
+  vec = new Array(40).fill(0);
+  encEl.innerHTML = PAIRS[si].zh.map(w => `<div class="stepline">${w}</div>`).join('');
+  decEl.innerHTML = '';
+  document.getElementById('out').textContent = '按「翻译」。';
+  drawVec();
+}
+function drawVec() {
+  const box = document.getElementById('vbars');
+  box.innerHTML = '';
+  vec.forEach(v => {
+    const d = document.createElement('div');
+    d.className = 'vb';
+    d.style.height = Math.max(3, Math.abs(v) * 66) + 'px';
+    d.style.opacity = 0.4 + Math.min(0.6, Math.abs(v) * 0.5);
+    box.append(d);
+  });
+  const sat = vec.reduce((a, v) => a + Math.min(1, Math.abs(v)), 0) / vec.length;
+  document.getElementById('vnote').innerHTML = `平均饱和度 <b style="color:${sat > 0.75 ? 'var(--err)' : 'var(--ok)'}">${(sat * 100).toFixed(0)}%</b>${sat > 0.75 ? ' ⚠ 细节开始互相覆盖' : ''}`;
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+document.getElementById('run').addEventListener('click', async () => {
+  reset();
+  const p = PAIRS[si];
+  const rng = RNG(si * 31 + 7);
+  const encLines = [...encEl.children];
+  for (let i = 0; i < encLines.length; i++) {
+    encLines.forEach((l, k) => { l.className = 'stepline' + (k < i ? ' done' : k === i ? ' on' : ''); });
+    /* 每读一词，向量增加一些激活 */
+    for (let k = 0; k < 40; k++) vec[k] += (rng() - 0.42) * (0.5 + p.zh.length * 0.11);
+    vec = vec.map(v => Math.max(-1, Math.min(1, v)));
+    drawVec();
+    await wait(560);
+  }
+  encLines.forEach(l => l.className = 'stepline done');
+  await wait(350);
+  for (let i = 0; i < p.en.length; i++) {
+    const d = document.createElement('div');
+    d.className = 'stepline on';
+    d.textContent = p.en[i];
+    decEl.append(d);
+    await wait(420);
+    d.className = 'stepline done';
+  }
+  document.getElementById('out').innerHTML = `✅ <b>${p.en.join(' ')}</b><br><span style="font-size:12px;color:var(--muted)">${p.note}</span>`;
+});
+document.getElementById('reset').addEventListener('click', reset);
+renderSents();
+reset();
+</script>
+</body></html>

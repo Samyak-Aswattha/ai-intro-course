@@ -1,0 +1,170 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>线性回归实验室</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .lossplot { position:absolute; right:12px; top:12px; width:180px; height:110px; background:var(--surface); border:1px solid var(--border); border-radius:10px; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">线性回归 · 梯度下降现场</span><span class="s">拖动数据点，按训练看直线一步步"下山"；右侧损失曲线记录每一步</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <canvas class="lossplot" id="loss"></canvas>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">训练控制</div>
+    <div class="btn-row">
+      <button class="btn sm" id="train">训练 ▶</button>
+      <button class="btn sm ghost" id="step">单步</button>
+      <button class="btn sm ghost" id="reset">重置直线</button>
+      <button class="btn sm ghost" id="newd">新数据</button>
+    </div>
+    <div id="ctls"></div>
+    <div class="readout" id="ro"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      学习目标是让 <b>MSE = 平均(真实 − 预测)²</b> 最小。每一步：算梯度 → 反方向挪一点。<br><br>试把学习率拉到 5.0：损失曲线飞天（发散）；0.001：几乎不动（停滞）。<b>这就是深度学习最经典的两种失败。</b>
+    </div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, slider, brkSwitch, RNG, gauss } from '../_shared/demo.js';
+const cv = document.getElementById('cv');
+const lc = document.getElementById('loss');
+let ctx = autoFit(cv, draw);
+let lctx = (() => { const dpr = Math.min(devicePixelRatio, 2); const r = lc.getBoundingClientRect(); lc.width = r.width * dpr; lc.height = r.height * dpr; const c = lc.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); return c; })();
+
+let w = 0.6, b = 0.1, lr = 0.3, useSq = true, pts = [], lossHist = [], running = false, rafId = 0, steps = 0;
+function genPts() {
+  const rng = RNG(Math.floor(Math.random() * 9999));
+  const trueW = 0.5 + rng() * 0.6, trueB = 0.15 + rng() * 0.2;
+  pts = [];
+  for (let i = 0; i < 14; i++) pts.push({ x: rng(), y: trueW * pts.length / 14 * 0.9 + trueB * rng() + gauss(rng, 0, 0.06) });
+  pts = pts.map((p, i) => ({ x: (i + 0.5) / 14 + gauss(rng, 0, 0.02), y: trueW * ((i + 0.5) / 14) + trueB + gauss(rng, 0, 0.07) }));
+  steps = 0; lossHist = [];
+}
+function pred(x) { return w * x + b; }
+function mse() {
+  if (!pts.length) return 0;
+  const s = pts.reduce((a, p) => {
+    const d = pred(p.x) - p.y;
+    return a + (useSq ? d * d : Math.abs(d));
+  }, 0);
+  return s / pts.length;
+}
+function gradStep() {
+  let gw = 0, gb = 0;
+  const n = pts.length || 1;
+  for (const p of pts) {
+    const d = pred(p.x) - p.y;
+    if (useSq) { gw += 2 * d * p.x; gb += 2 * d; }
+    else { const s = Math.sign(d); gw += s * p.x; gb += s; }
+  }
+  w -= lr * gw / n;
+  b -= lr * gb / n;
+  steps++;
+  lossHist.push(mse());
+  if (lossHist.length > 160) lossHist.shift();
+}
+/* 画布映射：数据域 [0,1]x[0,1.2] */
+function X(x) { return 50 + x * (cw() - 80); }
+function Y(y) { return ch() - 40 - y * (ch() - 70) / 1.2; }
+function cw() { return cv.getBoundingClientRect().width; }
+function ch() { return cv.getBoundingClientRect().height; }
+function draw() {
+  const wpx = cw(), hpx = ch();
+  ctx.clearRect(0, 0, wpx, hpx);
+  const border = cssv('--border'), muted = cssv('--muted');
+  ctx.strokeStyle = border;
+  ctx.beginPath(); ctx.moveTo(46, 10); ctx.lineTo(46, hpx - 36); ctx.lineTo(wpx - 20, hpx - 36); ctx.stroke();
+  /* 数据点 */
+  pts.forEach(p => {
+    ctx.fillStyle = '#0f766e';
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 5, 0, 7); ctx.fill();
+  });
+  /* 当前直线 */
+  ctx.strokeStyle = cssv('--accent'); ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(X(0), Y(clamp01(b))); ctx.lineTo(X(1), Y(clamp01(w + b))); ctx.stroke();
+  ctx.lineWidth = 1;
+  /* 残差 */
+  pts.forEach(p => {
+    ctx.strokeStyle = 'rgba(180,72,43,.35)';
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(X(p.x), Y(p.y)); ctx.lineTo(X(p.x), Y(clamp01(pred(p.x)))); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+  ctx.fillStyle = muted;
+  ctx.font = '12px sans-serif';
+  ctx.fillText(`y = ${w.toFixed(3)}x + ${b.toFixed(3)}`, 60, 24);
+  /* 损失小图 */
+  const lw = lc.getBoundingClientRect().width, lh = lc.getBoundingClientRect().height;
+  lctx.clearRect(0, 0, lw, lh);
+  if (lossHist.length > 1) {
+    const mx = Math.max(...lossHist);
+    lctx.strokeStyle = cssv('--c3'); lctx.lineWidth = 1.5;
+    lctx.beginPath();
+    lossHist.forEach((v, i) => {
+      const x = 6 + i / (lossHist.length - 1) * (lw - 12);
+      const y = lh - 16 - (v / mx) * (lh - 26);
+      i ? lctx.lineTo(x, y) : lctx.moveTo(x, y);
+    });
+    lctx.stroke();
+  }
+  lctx.fillStyle = muted; lctx.font = '10px sans-serif';
+  lctx.fillText('损失', 8, 11);
+  lctx.fillText(mse().toFixed(5), lw - 60, 11);
+}
+function clamp01(v) { return Math.max(0, Math.min(1.2, v)); }
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function trainLoop() {
+  if (!running) return;
+  for (let i = 0; i < 2; i++) gradStep();
+  draw();
+  updRO();
+  if (!isFinite(mse()) || mse() > 1e6) { running = false; document.getElementById('train').textContent = '训练 ▶'; return; }
+  rafId = requestAnimationFrame(trainLoop);
+}
+function updRO() {
+  document.getElementById('ro').innerHTML = `步骤 <b>${steps}</b>\nMSE 损失 <b>${isFinite(mse()) ? mse().toFixed(5) : '∞ 发散！'}</b>\nw=${w.toFixed(3)} b=${b.toFixed(3)}`;
+}
+document.getElementById('train').addEventListener('click', () => {
+  running = !running;
+  document.getElementById('train').textContent = running ? '暂停 ■' : '训练 ▶';
+  if (running) trainLoop();
+});
+document.getElementById('step').addEventListener('click', () => { gradStep(); draw(); updRO(); });
+document.getElementById('reset').addEventListener('click', () => { w = Math.random() * 0.5; b = Math.random() * 0.5; steps = 0; lossHist = []; draw(); updRO(); });
+document.getElementById('newd').addEventListener('click', () => { genPts(); draw(); updRO(); });
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '学习率', min: 1, max: 500, value: 300, fmt: v => (v / 1000).toFixed(3), onInput: v => lr = v / 1000 }));
+ctls.append(slider({ label: '数据点数', min: 4, max: 30, value: 14, onInput: v => { genPtsN(v); draw(); } }));
+function genPtsN(n) {
+  const rng = RNG(7);
+  const trueW = 0.7, trueB = 0.2;
+  pts = [];
+  for (let i = 0; i < n; i++) pts.push({ x: (i + 0.5) / n + gauss(rng, 0, 0.015), y: trueW * ((i + 0.5) / n) + trueB + gauss(rng, 0, 0.06) });
+  steps = 0; lossHist = [];
+}
+document.getElementById('bz').append(brkSwitch('把 MSE 换成 MAE（绝对值损失）', v => { useSq = !v; }));
+genPts();
+draw();
+updRO();
+/* 拖动数据点 */
+let dragP = null;
+cv.addEventListener('pointerdown', e => {
+  const r = cv.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  dragP = pts.find(p => Math.hypot(X(p.x) - mx, Y(p.y) - my) < 12);
+});
+cv.addEventListener('pointermove', e => {
+  if (!dragP) return;
+  const r = cv.getBoundingClientRect();
+  dragP.x = Math.max(0, Math.min(1, (e.clientX - r.left - 50) / (r.width - 80)));
+  dragP.y = Math.max(0, Math.min(1.2, (r.height - 36 - (e.clientY - r.top)) / ((r.height - 70) / 1.2)));
+  draw(); updRO();
+});
+addEventListener('pointerup', () => dragP = null);
+</script>
+</body></html>

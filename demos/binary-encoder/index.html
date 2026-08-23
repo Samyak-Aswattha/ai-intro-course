@@ -1,0 +1,118 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>二进制编码台</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; padding:18px; }
+  .switches { display:flex; gap:10px; }
+  .sw { display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .sw .btn3d { width:44px; height:64px; border-radius:10px; border:2px solid var(--border2); background:var(--surface2); cursor:pointer; position:relative; transition:all .15s; }
+  .sw .btn3d::after { content:"0"; position:absolute; inset:0; display:grid; place-items:center; font-family:var(--mono); font-size:20px; color:var(--muted); }
+  .sw.on .btn3d { background:var(--accent); border-color:var(--accent); box-shadow:0 4px 14px rgba(180,72,43,.35); }
+  .sw.on .btn3d::after { content:"1"; color:#fff; }
+  .sw .w { font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .value { text-align:center; }
+  .value .big { font-family:var(--mono); font-size:34px; font-weight:700; color:var(--text); }
+  .value .sub { font-size:12.5px; color:var(--muted); margin-top:4px; }
+  .bits { font-family:var(--mono); font-size:16px; letter-spacing:3px; color:var(--accent); }
+  .cols { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
+  .mode { padding:10px 16px; border:1px solid var(--border); border-radius:10px; background:var(--surface); min-width:130px; }
+  .mode .k { font-size:11px; color:var(--muted); letter-spacing:.1em; }
+  .mode .v { font-family:var(--mono); font-size:18px; margin-top:4px; color:var(--text); }
+  .gauge-wrap { width:min(480px, 90%); }
+  .gauge-track { position:relative; height:22px; border-radius:6px; background:var(--surface2); border:1px solid var(--border); overflow:hidden; }
+  .gauge-ascii { position:absolute; top:0; bottom:0; background:color-mix(in srgb, var(--ok) 18%, transparent); border-left:1px solid var(--ok); border-right:1px solid var(--ok); }
+  .gauge-dot { position:absolute; top:-4px; width:3px; height:30px; background:var(--accent); transition:left .3s cubic-bezier(.2,.8,.2,1); }
+  .gauge-lbl { display:flex; justify-content:space-between; font-size:10.5px; color:var(--muted); margin-top:3px; font-family:var(--mono); }
+  .sw .btn3d { transition:background-color .15s, border-color .15s, transform .25s; }
+  .sw.flip .btn3d { animation:flip .4s ease; }
+  @keyframes flip { 0% { transform:rotateX(0); } 50% { transform:rotateX(90deg); } 100% { transform:rotateX(0); } }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">二进制编码台</span><span class="s">拨动 8 个开关，看同一个字节如何变成数字、字母与颜色</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="switches" id="sw"></div>
+    <div class="bits" id="bits"></div>
+    <div class="value"><div class="big" id="num">0</div><div class="sub" id="sub">十进制数值</div></div>
+    <div class="cols">
+      <div class="mode"><div class="k">ASCII 字符</div><div class="v" id="chr">—</div></div>
+      <div class="mode"><div class="k">颜色（RGB）</div><div class="v" id="color" style="display:flex;align-items:center;gap:8px"><span id="crgb">—</span><span id="cbox" style="width:22px;height:22px;border-radius:6px;border:1px solid var(--border);display:inline-block"></span></div></div>
+      <div class="mode"><div class="k">位置计数展开</div><div class="v" style="font-size:13px" id="expand">—</div></div>
+    </div>
+    <div class="gauge-wrap">
+      <div class="gauge-track"><div class="gauge-ascii" id="gAscii"></div><div class="gauge-dot" id="gDot"></div></div>
+      <div class="gauge-lbl"><span>0</span><span style="color:var(--ok)">绿色区间 = 可打印 ASCII（33–126）</span><span>255</span></div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">速览</div>
+    <div class="btn-row">
+      <button class="btn sm" id="name">转我的名字首字母</button>
+      <button class="btn sm ghost" id="rand">随机一字节</button>
+      <button class="btn sm ghost" id="clr">清零</button>
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      一个开关 = 一个[比特]。<b>8 比特 = 1 字节 = 256 种状态</b>，装得下全部英文字母（ASCII）。<br><br>
+      试试 01000001 → A，01100001 → a。大写与小写只差一个开关——这个差别叫"第 5 位"。
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      中文呢？一个字节装不下汉字，需要多个字节组合（UTF-8 常用 3 字节）。<b>万物皆可编码，只要状态够多。</b>
+    </div>
+  </div>
+</div>
+<script type="module">
+const N = 8;
+const state = new Array(N).fill(0);
+const sw = document.getElementById('sw');
+for (let i = 0; i < N; i++) {
+  const d = document.createElement('div');
+  d.className = 'sw';
+  const weight = 2 ** (N - 1 - i);
+  d.innerHTML = `<div class="btn3d"></div><span class="w">${weight}</span>`;
+  d.querySelector('.btn3d').addEventListener('click', () => { state[i] ^= 1; d.classList.toggle('on', !!state[i]); upd(); });
+  sw.append(d);
+}
+function val() { return state.reduce((a, b, i) => a + b * 2 ** (N - 1 - i), 0); }
+/* 33~126 是可打印 ASCII 范围，占 0~255 的固定一段，初始化一次即可 */
+const gAscii = document.getElementById('gAscii');
+gAscii.style.left = (33 / 255 * 100) + '%';
+gAscii.style.width = ((126 - 33) / 255 * 100) + '%';
+function upd() {
+  const v = val();
+  document.getElementById('bits').textContent = state.join('');
+  document.getElementById('num').textContent = v;
+  const c = (v >= 33 && v <= 126) ? String.fromCharCode(v) : (v === 32 ? '␣空格' : '—（不可打印）');
+  document.getElementById('chr').textContent = c;
+  const gray = Math.round(v / 255 * 255);
+  document.getElementById('crgb').textContent = `rgb(${gray},${gray},${gray})`;
+  document.getElementById('cbox').style.background = `rgb(${gray},${gray},${gray})`;
+  const terms = state.map((b, i) => b ? `2^${N - 1 - i}(${2 ** (N - 1 - i)})` : null).filter(Boolean);
+  document.getElementById('expand').textContent = terms.length ? terms.join(' + ') + ' = ' + v : '0';
+  document.getElementById('gDot').style.left = `calc(${v / 255 * 100}% - 1.5px)`;
+}
+/* 从右往左（最低位先翻）一位一位错开播放翻转动画，而不是 8 个开关瞬间同时跳变——
+   这样"拨一个字节"能被看见，不只是"看到结果" */
+function setStateAnimated(code) {
+  for (let i = 0; i < N; i++) {
+    const bit = (code >> (N - 1 - i)) & 1;
+    setTimeout(() => {
+      state[i] = bit;
+      sw.children[i].classList.toggle('on', !!bit);
+      sw.children[i].classList.remove('flip'); void sw.children[i].offsetWidth; sw.children[i].classList.add('flip');
+      upd();
+    }, (N - 1 - i) * 45);
+  }
+}
+document.getElementById('name').addEventListener('click', () => {
+  const name = prompt('输入一个英文字母（A-Z / a-z）：', 'Z');
+  if (!name) return;
+  setStateAnimated(name.trim().charCodeAt(0) || 90);
+});
+document.getElementById('rand').addEventListener('click', () => setStateAnimated(Math.floor(Math.random() * 256)));
+document.getElementById('clr').addEventListener('click', () => {
+  state.fill(0);
+  [...sw.children].forEach(c => c.classList.remove('on'));
+  upd();
+});
+upd();
+</script>
+</body></html>

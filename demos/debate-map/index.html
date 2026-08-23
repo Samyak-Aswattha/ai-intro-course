@@ -1,0 +1,101 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>辩论图谱</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; overflow:auto; padding:10px; }
+  canvas#dm { position:absolute; inset:0; width:100%; height:100%; }
+  .nodecard { position:absolute; width:240px; border:1.5px solid var(--border); border-radius:12px; background:var(--surface); padding:10px 12px; font-size:12px; line-height:1.65; box-shadow:var(--shadow-1); cursor:pointer; transition:all .15s; }
+  .nodecard:hover { transform: translateY(-2px); }
+  .nodecard.pro { border-color: #15803d88; } .nodecard.con { border-color: #b91c1c88; }
+  .nodecard.center { border-color: var(--accent); border-width: 2px; width: 260px; }
+  .nodecard .nk { font-size:10px; font-weight:800; letter-spacing:.1em; margin-bottom:3px; }
+  .nodecard.pro .nk { color: var(--ok); } .nodecard.con .nk { color: var(--err); } .nodecard.center .nk { color: var(--accent); }
+  .nodecard .nh { font-weight:700; font-size:13px; margin-bottom:3px; }
+  .nodecard .nb { color: var(--muted); display: none; }
+  .nodecard.open .nb { display: block; }
+  .nodecard.dim { opacity: .35; }
+  .stance { position:sticky; bottom:0; background:var(--surface); border-top:1px solid var(--border); padding:10px 14px; font-size:12.5px; }
+</style></head><body>
+<div class="demo-head"><span class="badge">辩论场</span><span class="t">物理符号系统能思考吗 · 辩论图谱</span><span class="s">源自课程辩论素材 debategraph：点击论点展开论证，绿方支持 / 红方反驳——最后请你入局</span></div>
+<div class="demo-body">
+  <div class="stage" id="stage">
+    <svg id="dm" style="position:absolute;inset:0;width:100%;height:100%"></svg>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">我的立场</div>
+    <div class="btn-row" id="vote"></div>
+    <div class="readout" id="vro"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      中心命题来自 1980 年代认知科学的著名论战（纽厄尔-西蒙假说 vs 塞尔/德雷福斯阵营）。<b>双方最强论证都已上图</b>——点开每个节点读 30 秒，再投票。
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      换位练习：试着为<b>你反对的一方</b>找到一个你认为最强的论点。找不到？说明你还没读懂它。
+    </div>
+  </div>
+</div>
+<script type="module">
+const NODES = [
+  { id: 'c', x: .5, y: .52, side: 'center', k: '中心命题', h: '物理符号系统具有产生智能的必要且充分手段', b: '纽厄尔 & 西蒙 (1976)：智能 = 对符号的合法操作。若此假说为真，造出思考的机器只是工程问题。' },
+  { id: 'p1', x: .22, y: .18, side: 'pro', k: '支持 · 普适性', h: '符号操作可表达一切可计算过程', b: '丘奇-图灵论题：任何有效过程都可被符号系统模拟。思维若是一种过程，就没有原则性障碍。' },
+  { id: 'p2', x: .78, y: .16, side: 'pro', k: '支持 · 实证成功', h: '定理证明、专家系统、围棋、GPT 的连续胜利', b: '每次"机器不可能 X"的预言都被推翻。2020 年代的语言模型在推理任务上的表现是符号纲领的意外回潮。' },
+  { id: 'p3', x: .12, y: .58, side: 'pro', k: '支持 · 可解释', h: '符号系统可审计、可推理、可修正', b: '与大模型的黑箱相反，符号推理的每一步可被检查——这在法律、医疗等高风险领域不可替代。' },
+  { id: 'n1', x: .30, y: .84, side: 'con', k: '反驳 · 中文屋', h: '句法不产生语义', b: '塞尔：完美的符号操作者仍可以完全不懂。计算的是形式，思维需要内容。' },
+  { id: 'n2', x: .70, y: .86, side: 'con', k: '反驳 · 具身性', h: '智能植根于身体与情境', b: '德雷福斯（现象学）：我们的理解依赖技能性的"在世存在"，不是离散符号的堆叠。纯粹的形式系统没有世界。' },
+  { id: 'n3', x: .88, y: .52, side: 'con', k: '反驳 · 框架问题', h: '真实世界的相关性无法穷举', b: '符号系统必须显式表示一切，但"什么与什么相关"本身依赖于无限的场景常识——符号主义在常识问题上节节败退。' },
+  { id: 'r1', x: .5, y: .12, side: 'pro', k: '回应', h: '系统回应：整体论', b: '屋中人不懂中文，但"人+手册+纸条"的系统懂——如同单神经元不懂诗而大脑懂。' },
+  { id: 'r2', x: .5, y: .90, side: 'con', k: '再回应', h: '机器人回应不充分', b: '除非符号系统与感知/行动真正闭环（具身化），否则只是"盲读符号"。当代多模态模型正在逼近这条线。' },
+];
+const EDGES = [['c','p1'],['c','p2'],['c','p3'],['c','n1'],['c','n2'],['c','n3'],['n1','r1'],['n2','r2'],['r1','c'],['r2','c']];
+const stage = document.getElementById('stage');
+const svg = document.getElementById('dm');
+function layout() {
+  const r = stage.getBoundingClientRect();
+  NODES.forEach(n => {
+    const el = document.createElement('div');
+    el.className = `nodecard ${n.side}`;
+    el.style.left = (n.x * (r.width - 260)) + 'px';
+    el.style.top = (n.y * (r.height - 150)) + 'px';
+    el.innerHTML = `<div class="nk">${n.k}</div><div class="nh">${n.h}</div><div class="nb">${n.b}</div>`;
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const wasOpen = el.classList.contains('open');
+      stage.querySelectorAll('.nodecard').forEach(x => x.classList.remove('open'));
+      if (!wasOpen) {
+        el.classList.add('open');
+        NODES.forEach(m => { });
+      }
+    });
+    stage.append(el);
+    n.el = el;
+  });
+  drawEdges();
+}
+function drawEdges() {
+  const r = stage.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${r.width} ${r.height}`);
+  svg.innerHTML = EDGES.map(([a, b]) => {
+    const A = NODES.find(n => n.id === a), B = NODES.find(n => n.id === b);
+    const x1 = A.x * (r.width - 260) + 120, y1 = A.y * (r.height - 150) + 30;
+    const x2 = B.x * (r.width - 260) + 120, y2 = B.y * (r.height - 150) + 30;
+    const color = a === 'c' || b === 'c' ? (B.side === 'con' ? '#b91c1c66' : '#15803d66') : '#8a857b55';
+    return `<path d="M${x1},${y1} C ${(x1 + x2) / 2},${y1} ${(x1 + x2) / 2},${y2} ${x2},${y2}" fill="none" stroke="${color}" stroke-width="1.6" stroke-dasharray="5 4"/>`;
+  }).join('');
+}
+layout();
+window.addEventListener('resize', drawEdges);
+/* 投票 */
+const votes = { pro: 0, con: 0, mid: 0 };
+const voteEl = document.getElementById('vote');
+[['pro', '🟢 支持假说'], ['mid', '🟡 部分成立'], ['con', '🔴 反对假说']].forEach(([k, t]) => {
+  const b = document.createElement('button');
+  b.className = 'btn sm ghost';
+  b.textContent = t;
+  b.addEventListener('click', () => {
+    votes[k]++;
+    const total = votes.pro + votes.con + votes.mid;
+    document.getElementById('vro').innerHTML = `你的投票：${t}\n班级模拟：支持 ${votes.pro} · 部分 ${votes.mid} · 反对 ${votes.con}（共 ${total} 票）\n提示：投完后，去点开对面阵营你认为最强的论点。`;
+  });
+  voteEl.append(b);
+});
+</script>
+</body></html>

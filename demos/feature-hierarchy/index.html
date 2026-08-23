@@ -1,0 +1,156 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>特征层级画廊</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:14px; overflow:auto; }
+  .layers { display:flex; gap:14px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  .lcard { text-align:center; cursor:pointer; transition:transform .18s; }
+  .lcard:hover { transform: translateY(-4px); }
+  .lcard canvas { border:1.5px solid var(--border); border-radius:12px; background:var(--surface); display:block; }
+  .lcard.on canvas { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .lcard .lk { font-size:11px; color:var(--muted); margin-top:6px; letter-spacing:.06em; }
+  .lcard .ln { font-size:13px; font-weight:700; }
+  .arrow2 { color:var(--muted); font-size:20px; }
+  .zoombox { width:min(320px, 90%); text-align:center; }
+  .zoombox canvas { width:100%; border:1.5px solid var(--accent); border-radius:14px; background:#111; }
+  .zoomcap { font-size:12.5px; color:var(--muted); margin-top:8px; line-height:1.8; }
+  .zoomcap b { color: var(--text); }
+</style></head><body>
+<div class="demo-head"><span class="badge">互动</span><span class="t">深度网络的层级特征 · 为什么"深"</span><span class="s">从像素到边缘到部件到物体：点击每一层看它在"看什么"——抽象的阶梯</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="layers" id="layers"></div>
+    <div class="zoombox"><canvas id="zoom" width="160" height="160"></canvas><div class="zoomcap" id="zcap">点击上方任一层级，放大查看它"眼中的世界"。</div></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">控制台</div>
+    <div class="btn-row">
+      <button class="btn sm" id="face">看人脸 👤</button>
+      <button class="btn sm ghost" id="letter">看字母 A</button>
+      <button class="btn sm ghost" id="scene">看场景 🏔️</button>
+    </div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 对比实验</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      逐层抽象 = <b>分而治之的信息蒸馏</b>：每层只解决一小步（找边、找组合），叠起来才能完成"认出奶奶"这种巨大跨越。<br><br>
+      打开「打乱层级」：低层特征被随机接线——高层立刻失去意义。层级不是装饰，是<b>结构本身</b>。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { brkSwitch, RNG } from '../_shared/demo.js';
+const S = 60;
+const modes = {
+  face(p) {
+    /* 像素域画一张简单人脸 */
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const d = Math.hypot(x - 30, y - 32);
+      p[y * S + x] = d < 20 ? 200 + Math.sin(x * .8 + y) * 12 : 40 + Math.sin(x * .3) * 20 + Math.cos(y * .25) * 15;
+    }
+    /* 眼睛 */
+    for (let y = 26; y < 30; y++) for (let x = 22; x < 27; x++) p[y * S + x] = 20;
+    for (let y = 26; y < 30; y++) for (let x = 33; x < 38; x++) p[y * S + x] = 20;
+    /* 嘴 */
+    for (let x = 25; x < 35; x++) p[42 * S + x] = 90;
+  },
+  letter(p) {
+    const A = [
+      '..#####..', '.##...##.', '##.....##', '##.....##', '#########', '##.....##', '##.....##', '##.....##', '##.....##',
+    ];
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const gy = Math.floor(y / S * 9), gx = Math.floor(x / S * 9);
+      p[y * S + x] = (A[gy]?.[gx] === '#') ? 230 : 35;
+    }
+  },
+  scene(p) {
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      let v;
+      if (y < 20) v = 90 + Math.sin(x * .2) * 8;                    // 天
+      else if (y < 34) v = 160 + Math.abs(x - 42 - y * .5) * -3 + 60; // 山（斜边）
+      else v = 60 + ((x + y) % 7 < 3 ? 30 : 0);                     // 草地纹理
+      p[y * S + x] = v;
+    }
+  },
+};
+let base = new Float32Array(S * S);
+let scrambled = false, curMode = 'face';
+modes.face(base);
+
+/* 各层处理：L1 边缘（水平/垂直差分）→ L2 部件（局部聚合）→ L3 物体（全局轮廓） */
+function edge(src, vertical) {
+  const out = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const a = src[y * S + x], b = vertical ? src[y * S + Math.min(S - 1, x + 1)] : src[Math.min(S - 1, y + 1) * S + x];
+    out[y * S + x] = Math.abs(a - b);
+  }
+  return out;
+}
+function pool(src, k) {
+  const n = Math.ceil(S / k), out = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    let m = 0;
+    for (let dy = 0; dy < k; dy++) for (let dx = 0; dx < k; dx++) m = Math.max(m, src[Math.min(S - 1, y * k + dy) * S + Math.min(S - 1, x * k + dx)]);
+    out[y * n + x] = m;
+  }
+  return out;
+}
+const LAYERS = [
+  { k: 'LAYER 1', n: '像素', d: '原始亮度：机器最初看到的只是 3600 个数字，没有"脸"的概念。', f: p => p },
+  { k: 'LAYER 2', n: '边缘', d: '卷积核找亮度突变：轮廓浮现——这是第一层神经元真正做的事。', f: p => { const h = edge(p, false), v = edge(p, true); return h.map((x, i) => Math.max(x, v[i])); } },
+  { k: 'LAYER 3', n: '部件', d: '边缘聚合为部件：眼睛区、嘴区、山脊线。中间层的"神经元"开始对部件放电。', f: p => pool(edge(pool(edge(p, false), 2), true), 2) },
+  { k: 'LAYER 4', n: '物体', d: '部件组装为整体：这张图最深的神经元此刻正在喊"人脸！"。', f: p => pool(pool(edge(pool(edge(p, false), 2), true), 2), 3) },
+];
+const layersEl = document.getElementById('layers');
+const zoom = document.getElementById('zoom');
+const zctx = zoom.getContext('2d');
+let actives = [];
+function drawGrid(canvas, data, size) {
+  canvas.width = canvas.height = size;
+  const c = canvas.getContext('2d');
+  const cell = size / Math.sqrt(data.length);
+  const mx = Math.max(...data) || 1;
+  for (let y = 0; y < Math.sqrt(data.length); y++) for (let x = 0; x < Math.sqrt(data.length); x++) {
+    const v = data[y * Math.sqrt(data.length) + x] / mx;
+    c.fillStyle = `hsl(${30 - v * 30}, 15%, ${8 + v * 78}%)`;
+    c.fillRect(x * cell, y * cell, cell + .5, cell + .5);
+  }
+}
+function render() {
+  layersEl.innerHTML = '';
+  actives = [];
+  let prevSrc = base;
+  LAYERS.forEach((L, i) => {
+    let src;
+    if (i === 0) src = L.f(base);
+    else if (scrambled) src = shuffleData(L.f(base));
+    else src = L.f(prevSrc);
+    prevSrc = src;
+    const card = document.createElement('div');
+    card.className = 'lcard';
+    const cv = document.createElement('canvas');
+    drawGrid(cv, src, 92);
+    card.append(cv);
+    card.insertAdjacentHTML('beforeend', `<div class="lk">${L.k}</div><div class="ln">${L.n}</div>`);
+    card.addEventListener('click', () => {
+      layersEl.querySelectorAll('.lcard').forEach(x => x.classList.remove('on'));
+      card.classList.add('on');
+      drawGrid(zoom, src, 160);
+      document.getElementById('zcap').innerHTML = `<b>${L.k} · ${L.n}</b><br>${L.d}`;
+    });
+    layersEl.append(card);
+    if (i === 1) card.classList.add('on'), drawGrid(zoom, src, 160), document.getElementById('zcap').innerHTML = `<b>${L.k} · ${L.n}</b><br>${L.d}`;
+    actives.push({ L, data: src });
+  });
+}
+function shuffleData(d) {
+  const rng = RNG(9);
+  const out = new Float32Array(d.length);
+  for (let i = 0; i < d.length; i++) out[i] = d[Math.floor(rng() * d.length)];
+  return out;
+}
+[['face', '#face'], ['letter', '#letter'], ['scene', '#scene']].forEach(([k, sel]) => {
+  document.querySelector(sel).addEventListener('click', () => { curMode = k; modes[k](base); render(); });
+});
+document.getElementById('bz').append(brkSwitch('打乱层级接线（破坏结构）', v => { scrambled = v; render(); }));
+render();
+</script>
+</body></html>

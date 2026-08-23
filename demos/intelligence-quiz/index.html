@@ -1,0 +1,97 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>智能光谱排序</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:18px; overflow-y:auto; }
+  .intro { font-size:13px; color:var(--muted); margin-bottom:14px; line-height:1.7; }
+  .items { display:flex; flex-direction:column; gap:8px; }
+  .row { display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 14px; cursor:grab; transition:border-color .15s; }
+  .row:hover { border-color:var(--accent); }
+  .row.dragging { opacity:.35; }
+  .row .num { font-family:var(--mono); font-size:12px; color:var(--accent); width:22px; }
+  .row .ico { font-size:20px; }
+  .row .name { font-weight:600; font-size:14px; }
+  .row .dims { margin-left:auto; font-size:11.5px; color:var(--muted); text-align:right; max-width:300px; line-height:1.5; }
+  .row .updown { display:flex; gap:4px; flex-shrink:0; }
+  .row .updown button { width:24px; height:24px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer; }
+</style></head><body>
+<div class="demo-head"><span class="badge">互动</span><span class="t">智能光谱排序</span><span class="s">拖动或用箭头，把 12 种事物按你心中的"智能程度"从高到低排序</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="intro">先<b>凭直觉</b>排完，再打开右侧「显示能力维度」复盘：你的排序依据是哪些维度？维度表本身你认同吗（比如 ChatGPT 的"学习*"指它能上下文学习，但没有长期记忆）？</div>
+    <div class="items" id="items"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">控制台</div>
+    <div id="swZone"></div>
+    <div class="card" id="verdict" style="display:none"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.7">没有标准答案。工程学的参考做法是：智能是<b>多维</b>的（学习/推理/感知/语言/创造/自主），不必同时具备。你的光谱形状，就是你对"智能"的隐含定义。</div>
+  </div>
+</div></div>
+<script type="module">
+import { brkSwitch } from '../_shared/demo.js';
+const DATA = [
+  { ico: '🧠', name: 'ChatGPT', dims: ['语言', '推理', '创造', '学习*'] },
+  { ico: '🧒', name: '两岁幼儿', dims: ['感知', '学习', '自主', '语言', '创造'] },
+  { ico: '🐙', name: '章鱼', dims: ['感知', '学习', '自主', '创造', '推理'] },
+  { ico: '🚗', name: '自动驾驶汽车', dims: ['感知', '推理', '自主'] },
+  { ico: '🐶', name: '宠物犬', dims: ['感知', '学习', '自主'] },
+  { ico: '♟️', name: '国际象棋引擎', dims: ['推理'] },
+  { ico: '🐝', name: '蜂群（整体）', dims: ['感知', '学习', '自主', '创造'] },
+  { ico: '🐜', name: '蚂蚁', dims: ['感知', '学习'] },
+  { ico: '🧬', name: '演化（过程）', dims: ['学习', '创造'] },
+  { ico: '🌱', name: '向日葵', dims: ['感知'] },
+  { ico: '🌡️', name: '恒温器', dims: ['感知'] },
+  { ico: '🪨', name: '一块石头', dims: [] },
+];
+const items = document.getElementById('items');
+let order = DATA.map((_, i) => i);
+let showDims = false;
+
+function render() {
+  items.innerHTML = '';
+  order.forEach((di, pos) => {
+    const d = DATA[di];
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.draggable = true;
+    row.innerHTML = `<span class="num">${pos + 1}</span><span class="ico">${d.ico}</span><span class="name">${d.name}</span>
+      ${showDims && d.dims.length ? `<span class="dims">${d.dims.join(' · ')}</span>` : ''}
+      <span class="updown"><button data-mv="-1" title="上移">↑</button><button data-mv="1" title="下移">↓</button></span>`;
+    row.querySelectorAll('[data-mv]').forEach(b => b.addEventListener('click', () => {
+      const p = order.indexOf(di), np = p + (+b.dataset.mv);
+      if (np < 0 || np >= order.length) return;
+      order.splice(p, 1); order.splice(np, 0, di); render();
+    }));
+    row.addEventListener('dragstart', () => row.classList.add('dragging'));
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      order = [...items.querySelectorAll('.row')].map(r => DATA.findIndex(d => d.name === r.querySelector('.name').textContent));
+    });
+    items.append(row);
+  });
+}
+items.addEventListener('dragover', e => {
+  e.preventDefault();
+  const dragging = items.querySelector('.dragging');
+  if (!dragging) return;
+  const rows = [...items.querySelectorAll('.row:not(.dragging)')];
+  const after = rows.find(r => e.clientY < r.getBoundingClientRect().top + r.getBoundingClientRect().height / 2);
+  if (after) items.insertBefore(dragging, after); else items.append(dragging);
+});
+
+document.getElementById('swZone').append(brkSwitch('显示能力维度', v => {
+  showDims = v;
+  if (v) {
+    const counts = {};
+    order.forEach((di, pos) => DATA[di].dims.forEach(x => counts[x] = (counts[x] || 0) + 1));
+    const box = document.getElementById('verdict');
+    box.style.display = 'block';
+    box.innerHTML = `<b style="font-size:13px">复盘提示</b><div style="font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.7">
+    ① 你把<b>语言</b>类存在（ChatGPT、幼儿）排得高，还是<b>自主/具身</b>类（章鱼、蜂群）高？<br>② 恒温器和向日葵都"感知"，差别在哪？<br>③ 演化会学习、会创造，你把它排高了吗——为什么多数人不愿意？</div>`;
+  } else document.getElementById('verdict').style.display = 'none';
+  render();
+}));
+render();
+</script>
+</body></html>

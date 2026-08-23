@@ -1,0 +1,171 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>图灵测试实验室</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .round-tabs { display:flex; gap:6px; padding:10px 14px; border-bottom:1px solid var(--border); background:var(--surface); flex-wrap:wrap; }
+  .round-tabs button { padding:4px 12px; border-radius:14px; border:1px solid var(--border); background:var(--surface2); font-size:12px; color:var(--muted); cursor:pointer; font-family:var(--font); }
+  .round-tabs button.on { border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .guess-row { display:flex; gap:8px; padding:10px 14px; border-top:1px solid var(--border); background:var(--surface); align-items:center; flex-wrap:wrap; }
+  .reveal { padding:12px 16px; border-top:1px solid var(--border); background:var(--accent-soft); font-size:12.5px; line-height:1.7; display:none; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">图灵测试实验室</span><span class="s">两位对话者，一个是"人类模拟"，一个是算法——严格按图灵原始设计的一对一模仿游戏，50% 是瞎猜的基线</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="round-tabs" id="tabs"></div>
+    <div class="chat-box" id="chat"></div>
+    <div class="input-row">
+      <input id="inp" placeholder="问一个刁钻的问题，回车发送…" autocomplete="off">
+      <button class="btn" id="send">发送</button>
+    </div>
+    <div class="guess-row" id="guessRow">
+      <span style="font-size:12.5px;color:var(--muted)">判定：</span>
+      <button class="btn sm ghost" data-g="0">甲 是算法</button>
+      <button class="btn sm ghost" data-g="1">乙 是算法</button>
+      <span style="flex:1"></span>
+      <span style="font-size:12px;color:var(--muted)" id="score"></span>
+    </div>
+    <div class="reveal" id="reveal"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">图灵的判据</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      1950 年图灵的设计：提问者只通过<b>文字</b>与两个对象对话，若无法可靠分辨机器与人，机器即通过"模仿游戏"。
+    </div>
+    <div class="panel-title">好的提问长什么样</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      ① <b>创造性</b>："用'月亮、地铁、发票'写一句诗"<br>
+      ② <b>自我指涉</b>："你会撒谎吗？"<br>
+      ③ <b>常识陷阱</b>："把大象放进冰箱分几步？"<br>
+      ④ <b>即时性</b>："现在几点了？你饿吗？"
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      本实验室的"算法"是本页内置的规则系统（第二章的遗产），不是大模型——正如 1966 年的 ELIZA。它会提醒你：<b>骗过你不难，难的是真的懂。</b>
+    </div>
+  </div>
+</div>
+<script type="module">
+const chat = document.getElementById('chat');
+const inp = document.getElementById('inp');
+const reveal = document.getElementById('reveal');
+
+const PERSONAS = [
+  {
+    id: 'A', isMachine: true, name: '对象 A',
+    openers: ['你好，我们可以开始了。'],
+    reply(q) {
+      const s = q.toLowerCase();
+      if (/诗|写一句|作诗/.test(q)) return '月亮提着地铁回家，发票是夜色的收据。';
+      if (/撒谎|骗|诚实/.test(q)) return '我不会撒谎。我说的每一句话都是真的。';
+      if (/几点|时间|饿|吃/.test(q)) return '我不饿，谢谢关心。';
+      if (/大象|冰箱/.test(q)) return '三步：打开冰箱门，放入大象，关上冰箱门。';
+      if (/你是谁|你是人|机器/.test(q)) return '我是人。我有家庭和童年。';
+      if (/为什么|怎么/.test(q)) return '因为事情就是这样，就像太阳从东边升起。';
+      if (/感觉|情绪|开心|难过/.test(q)) return '我感觉还行，有点困，昨天熬夜了。';
+      return pick(['嗯，这个问题很有意思。', '我同意你的看法。', '让我们换个话题吧。', '你为什么这么问？']);
+    }
+  },
+  {
+    id: 'B', isMachine: false, name: '对象 B',
+    reply(q) {
+      const s = q;
+      if (/诗|写一句|作诗/.test(q)) return '哈，这就来——"地铁吞下月亮的零钱 / 发票上打印着整个夜晚的失业率"……好吧我尽力了，第二句是不是有点太丧？';
+      if (/撒谎|骗|诚实/.test(q)) return '会啊，比如我妈问我作业写完没。你这么问是不是怀疑我是机器人？我反而开始怀疑你了。';
+      if (/几点|时间/.test(q)) return '不知道，手机在充电。反正挺晚了，我明天还有早八。';
+      if (/饿|吃/.test(q)) return '有点！刚看到你说吃我就饿了。你吃了吗？';
+      if (/大象|冰箱/.test(q)) return '哈哈这是脑筋急转弯吗，经典答案三步，但真要塞进去得先把冰箱拆了吧';
+      if (/你是谁|你是人|机器/.test(q)) return '我是人类啊，你才是机器吧，说话这么客气。';
+      if (/为什么|怎么/.test(q)) return '这个我还真想过……怎么说呢，一部分是习惯，一部分是懒得想别的。';
+      if (/感觉|情绪|开心|难过/.test(q)) return '今天还行，就是有点烦，下周要交论文。你呢？';
+      return pick(['嗯……让我想想。', '你这问题有点东西。', '说实话我不太确定。', '你先说说你的想法？']);
+    }
+  },
+  {
+    id: 'C', isMachine: true, name: '对象 C',
+    reply(q) {
+      if (/诗|写一句|作诗/.test(q)) return '1. 月亮 2. 地铁 3. 发票。组合：月亮在地铁里刷发票。';
+      if (/撒谎|骗|诚实/.test(q)) return '诚实是一种美德。撒谎是不诚实的表现。';
+      if (/几点|时间/.test(q)) return '时间是一种物理量。';
+      if (/饿|吃/.test(q)) return '进食是生物体的能量获取行为。';
+      if (/大象|冰箱/.test(q)) return '大象平均体重 4000 千克，冰箱容积约 300 升。无法放入。';
+      if (/你是谁|你是人|机器/.test(q)) return '我是一个普通的对话参与者。';
+      return pick(['请提供更多信息。', '这个问题的答案取决于上下文。', '已收到你的消息。', '抱歉，我不明白。']);
+    }
+  }
+];
+function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+
+/* 图灵的原始设计是一对一：提问者面对恰好一个人、一个机器，二选一。
+   之前的版本摆了三个对话者、两个是算法——不管你读没读对话，闭眼随便点一个
+   "算法"命中率都有 2/3，整个测试形同虚设。现在严格按一对一复原：每轮从机器
+   人格池里抽一个，跟"人类模拟"人格随机分到甲/乙两个坑，基线是真正的 50%。 */
+const MACHINES = PERSONAS.filter(p => p.isMachine);
+const HUMAN = PERSONAS.find(p => !p.isMachine);
+let round = 0, correct = 0, total = 0, guessed = false;
+let slots = []; /* [{slot:'甲', persona}, {slot:'乙', persona}] */
+
+function newRound() {
+  round++;
+  guessed = false;
+  reveal.style.display = 'none';
+  chat.innerHTML = '';
+  const machine = pick(MACHINES);
+  const pair = Math.random() < 0.5 ? [HUMAN, machine] : [machine, HUMAN];
+  slots = [{ slot: '甲', persona: pair[0] }, { slot: '乙', persona: pair[1] }];
+  slots.forEach(s => {
+    const p = s.persona;
+    if (p.openers) push(s.slot, pick(p.openers), false);
+    else push(s.slot, round === 1 ? '你好！随时开始。' : pick(['准备好了。', '你好，请问吧。', '开始吧。']), false);
+  });
+  tabsRender();
+}
+function push(who, text, mine = false) {
+  const m = document.createElement('div');
+  m.className = 'msg ' + (mine ? 'user' : 'bot');
+  m.textContent = (mine ? '' : `【${who}】 `) + text;
+  chat.append(m);
+  chat.scrollTop = 1e9;
+}
+document.getElementById('send').addEventListener('click', send);
+inp.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+function send() {
+  const v = inp.value.trim();
+  if (!v || guessed) { if (guessed) inp.value = ''; return; }
+  inp.value = '';
+  push('', v, true);
+  slots.forEach((s, i) => setTimeout(() => push(s.slot, s.persona.reply(v)), 350 + i * 500));
+}
+
+document.getElementById('guessRow').addEventListener('click', e => {
+  const b = e.target.closest('[data-g]');
+  if (!b || guessed) return;
+  guessed = true;
+  total++;
+  const guessIdx = +b.dataset.g;
+  const anyRight = slots[guessIdx].persona.isMachine;
+  const machineSlot = slots.find(s => s.persona.isMachine);
+  const machinePersona = machineSlot.persona;
+  const kind = machinePersona.id === 'A' ? '讨好型规则系统（什么都顺着说，ELIZA 的后代）' : '字面理解系统';
+  if (anyRight) correct++;
+  document.getElementById('score').textContent = `战绩：${correct} / ${total}（基线 50%）`;
+  reveal.style.display = 'block';
+  reveal.innerHTML = anyRight
+    ? `✅ <b>判定正确。</b>「${machineSlot.slot}」是算法——一个<b>${kind}</b>。你识破的是"不像人"，而不是"没有理解"——这正是图灵测试被批评的地方：<b>测的是模仿力，不是智能。</b>`
+    : `❌ <b>判定错误。</b>「${machineSlot.slot}」才是算法（${kind}），另一边才是"人类风格"（由模板模拟）。这一轮说明：<b>流畅与个性可以伪造</b>，而判断"谁是人"远比想象中脆弱。点"下一轮"再战。`;
+});
+const tabs = document.getElementById('tabs');
+function tabsRender() {
+  tabs.innerHTML = '';
+  const next = document.createElement('button');
+  next.className = 'btn sm';
+  next.textContent = '下一轮 ⟳';
+  next.addEventListener('click', newRound);
+  tabs.append(next);
+  const tag = document.createElement('span');
+  tag.style.cssText = 'font-size:12px;color:var(--muted);align-self:center';
+  tag.textContent = `第 ${round} 轮 · 问几个问题后，在下方点出你认为的"算法"`;
+  tabs.append(tag);
+}
+newRound();
+</script>
+</body></html>

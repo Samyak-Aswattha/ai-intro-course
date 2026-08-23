@@ -1,0 +1,164 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>偏差-方差靶场</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; gap:10px; padding:14px; overflow-y:auto; }
+  .targets { display:flex; gap:12px; flex:1; min-height:0; }
+  .target-box { flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0; }
+  .target-box canvas { border:1px solid var(--border); border-radius:10px; background:var(--surface); width:100%; flex:1; min-height:150px; }
+  .tlabel { font-size:12.5px; color:var(--muted); }
+  .tlabel b { color:var(--text); }
+  .metric-strip { display:flex; gap:10px; flex-wrap:wrap; }
+  .ms { flex:1; min-width:120px; border:1px solid var(--border); border-radius:10px; padding:8px 12px; background:var(--surface); font-family:var(--mono); font-size:12px; }
+  .ms b { font-size:16px; display:block; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">偏差-方差靶场</span><span class="s">同一真实规律，换 20 批训练数据分别训练三个模型——弹着点分布暴露各自的病</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="targets">
+      <div class="target-box"><canvas id="c1"></canvas><div class="tlabel"><b>太简单</b>（1 阶多项式）</div></div>
+      <div class="target-box"><canvas id="c2"></canvas><div class="tlabel"><b>刚好</b>（4 阶多项式）</div></div>
+      <div class="target-box"><canvas id="c3"></canvas><div class="tlabel"><b>太复杂</b>（15 阶多项式）</div></div>
+    </div>
+    <div class="metric-strip">
+      <div class="ms">偏差²（系统性偏离）<b id="m1">—</b></div>
+      <div class="ms">方差（数据敏感性）<b id="m2">—</b></div>
+      <div class="ms">测试总误差<b id="m3">—</b></div>
+      <div class="ms" style="flex:1.5">已重采样<b id="m4" style="display:inline">0</b> 批　<button class="btn sm ghost" id="re" style="vertical-align:middle">↻ 换 20 批数据</button></div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">控制台</div>
+    <div id="ctls"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 药方体验</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      左靶：所有模型一起<b>偏向同一处</b>（高偏差·欠拟合）；右靶：每批数据学出<b>完全不同的曲线</b>（高方差·过拟合）。<br><br>
+      打开 <b>bagging 开关</b>（每批数据训 5 个模型取平均，模拟随机森林）：右靶弹着点收拢——<b>平均消方差</b>；左靶纹丝不动——<b>平均消不了偏差</b>。这就是 Bagging 与 Boosting 的分工原理。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { slider, brkSwitch, RNG, gauss } from '../_shared/demo.js';
+
+const N_BATCH = 20, N_PTS = 12;
+const TRUE = x => Math.sin(x * 6.3) * 0.55;
+let noise = 0.14, bagging = false;
+const DEGREES = [1, 4, 15];
+const canvases = [document.getElementById('c1'), document.getElementById('c2'), document.getElementById('c3')];
+const ctxs = canvases.map(c => {
+  const dpr = Math.min(devicePixelRatio, 2);
+  const fit = () => {
+    const r = c.getBoundingClientRect();
+    c.width = r.width * dpr; c.height = r.height * dpr;
+    const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return ctx;
+  };
+  new ResizeObserver(() => { fit(); renderAll(); }).observe(c);
+  return fit();
+});
+
+function fitPoly(pts, deg) {
+  const m = deg + 1;
+  const A = Array.from({ length: m }, () => new Array(m + 1).fill(0));
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j < m; j++) A[i][j] = pts.reduce((s, p) => s + Math.pow(p.x, i + j), 0);
+    A[i][m] = pts.reduce((s, p) => s + p.y * Math.pow(p.x, i), 0);
+  }
+  for (let col = 0; col < m; col++) {
+    let piv = col;
+    for (let r = col + 1; r < m; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+    [A[col], A[piv]] = [A[piv], A[col]];
+    if (Math.abs(A[col][col]) < 1e-12) continue;
+    for (let r = 0; r < m; r++) {
+      if (r === col) continue;
+      const f = A[r][col] / A[col][col];
+      for (let cc = col; cc <= m; cc++) A[r][cc] -= f * A[col][cc];
+    }
+  }
+  return A.map((row, i) => Math.abs(row[i]) < 1e-12 ? 0 : row[m] / row[i]);
+}
+const evalPoly = (co, x) => co.reduce((s, c, i) => s + c * Math.pow(x, i), 0);
+
+let curves = [[], [], []];  /* 每个模型所有批次的预测曲线（在评估点上） */
+const EVAL_XS = Array.from({ length: 21 }, (_, i) => i / 20);
+
+function sample() {
+  curves = [[], [], []];
+  for (let b = 0; b < N_BATCH; b++) {
+    const rng = RNG(b * 977 + 13);
+    const pts = [];
+    for (let i = 0; i < N_PTS; i++) {
+      const x = Math.max(0.02, Math.min(0.98, (i + rng()) / N_PTS));
+      pts.push({ x, y: TRUE(x) + gauss(rng, 0, noise) });
+    }
+    DEGREES.forEach((deg, di) => {
+      if (bagging) {
+        const preds = [];
+        for (let m = 0; m < 5; m++) {
+          const boot = pts.map(p => pts[Math.floor(rng() * pts.length)]);
+          const co = fitPoly(boot, deg);
+          preds.push(EVAL_XS.map(x => evalPoly(co, x)));
+        }
+        curves[di].push(EVAL_XS.map((_, i) => preds.reduce((a, pr) => a + pr[i], 0) / preds.length));
+      } else {
+        const co = fitPoly(pts, deg);
+        curves[di].push(EVAL_XS.map(x => evalPoly(co, x)));
+      }
+    });
+  }
+  computeMetrics();
+  renderAll();
+}
+function computeMetrics() {
+  const out = { 0: [], 1: [], 2: [] };
+  DEGREES.forEach((deg, di) => {
+    const cs = curves[di];
+    const n = cs.length;
+    const mean = EVAL_XS.map((_, i) => cs.reduce((a, c) => a + c[i], 0) / n);
+    out[di][0] = EVAL_XS.reduce((a, _, i) => a + (mean[i] - TRUE(EVAL_XS[i])) ** 2, 0) / EVAL_XS.length;
+    out[di][1] = EVAL_XS.reduce((a, _, i) => a + cs.reduce((s, c) => s + (c[i] - mean[i]) ** 2, 0) / n, 0) / EVAL_XS.length;
+    out[di][2] = out[di][0] + out[di][1] + noise * noise;
+  });
+  document.getElementById('m1').innerHTML = out[0][0].toFixed(4) + ' / ' + out[1][0].toFixed(4) + ' / ' + out[2][0].toFixed(4);
+  document.getElementById('m2').innerHTML = out[0][1].toFixed(4) + ' / ' + out[1][1].toFixed(4) + ' / ' + out[2][1].toFixed(4);
+  document.getElementById('m3').innerHTML = out[0][2].toFixed(4) + ' / ' + out[1][2].toFixed(4) + ' / ' + out[2][2].toFixed(4);
+  document.getElementById('m4').textContent = N_BATCH;
+}
+function renderAll() {
+  canvases.forEach((c, di) => {
+    const ctx = ctxs[di];
+    const r = c.getBoundingClientRect();
+    const w = r.width, h = r.height;
+    ctx.clearRect(0, 0, w, h);
+    const X = x => 10 + x * (w - 20);
+    const Y = y => h / 2 - y * (h / 2.8);
+    /* 中心线与靶心（真实函数） */
+    ctx.strokeStyle = cssv('--border');
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    for (let x = 0; x <= 1.001; x += 0.05) x === 0 ? ctx.moveTo(X(x), Y(TRUE(x))) : ctx.lineTo(X(x), Y(TRUE(x)));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = cssv('--muted'); ctx.font = '10px sans-serif';
+    ctx.fillText('虚线 = 真实规律（靶心）', 12, 14);
+    /* 每批次曲线 */
+    curves[di].forEach(curve => {
+      ctx.strokeStyle = `hsla(${di === 0 ? 15 : di === 1 ? 160 : 265}, 70%, 50%, .55)`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      curve.forEach((y, i) => {
+        const py = Y(Math.max(-1.35, Math.min(1.35, y)));
+        i === 0 ? ctx.moveTo(X(EVAL_XS[i]), py) : ctx.lineTo(X(EVAL_XS[i]), py);
+      });
+      ctx.stroke();
+    });
+    ctx.lineWidth = 1;
+  });
+}
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+document.getElementById('re').addEventListener('click', sample);
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '数据噪声', min: 4, max: 40, value: 14, fmt: v => (v / 100).toFixed(2), onInput: v => { noise = v / 100; sample(); } }));
+document.getElementById('bz').append(brkSwitch('Bagging：每批训 5 个模型取平均', v => { bagging = v; sample(); }));
+sample();
+</script>
+</body></html>

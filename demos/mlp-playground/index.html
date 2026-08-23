@@ -1,0 +1,248 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>MLP 训练操场</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:12px; gap:10px; }
+  .row1 { display:flex; gap:10px; flex:1; min-height:0; }
+  .mainplot { flex:1.6; position:relative; border:1px solid var(--border); border-radius:12px; background:var(--surface); overflow:hidden; }
+  .side { flex:1; display:flex; flex-direction:column; gap:10px; min-width:200px; }
+  .lossbox { border:1px solid var(--border); border-radius:12px; background:var(--surface); flex:1; position:relative; overflow:hidden; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .taskbar { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">MLP 训练操场</span><span class="s">真实反向传播在你的浏览器里跑：换数据形、调层数/激活/学习率，实时看决策边界与双损失曲线</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="taskbar">
+      <span style="font-size:12px;color:var(--muted)">数据：</span>
+      <button class="btn sm ghost" data-d="xor">异或</button>
+      <button class="btn sm ghost" data-d="circle">环带</button>
+      <button class="btn sm ghost" data-d="spiral">螺旋</button>
+      <span style="flex:1"></span>
+      <button class="btn sm" id="run">训练 ▶</button>
+      <button class="btn sm ghost" id="reset">重置网络</button>
+    </div>
+    <div class="row1">
+      <div class="mainplot"><canvas id="cv"></canvas></div>
+      <div class="side">
+        <div class="lossbox"><canvas id="lc"></canvas></div>
+        <div class="readout" id="ro" style="flex-shrink:0"></div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">超参数</div>
+    <div id="ctls"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 任务卡（做完勾掉）</div></div>
+    <div class="card" style="font-size:12px;color:var(--muted);line-height:1.7">
+      ① 螺旋 + 1 层 4 神经元 = 欠拟合<br>② 加到 3 层 = 刚好<br>③ 学习率 3.0 = 损失爆炸<br>④ L2 拉满 = 边界变懒<br>⑤ 去掉激活函数 = 一条直线（永远学不会）
+    </div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, slider, brkSwitch, RNG, gauss } from '../_shared/demo.js';
+/* ---------- 数据 ---------- */
+let data = [], dataType = 'xor';
+function genData() {
+  const rng = RNG(88);
+  data = [];
+  if (dataType === 'xor') {
+    for (let i = 0; i < 60; i++) {
+      const x = rng() * 1.6 - 0.8, y = rng() * 1.6 - 0.8;
+      data.push({ x: [x, y], y: (x * y > 0) ? 1 : 0 });
+    }
+  } else if (dataType === 'circle') {
+    for (let i = 0; i < 70; i++) {
+      const r = rng() * 0.35, t = rng() * 7;
+      data.push({ x: [Math.cos(t) * r, Math.sin(t) * r], y: 0 });
+      const r2 = 0.55 + rng() * 0.3, t2 = rng() * 7;
+      data.push({ x: [Math.cos(t2) * r2, Math.sin(t2) * r2], y: 1 });
+    }
+  } else {
+    for (let c = 0; c < 2; c++) for (let i = 0; i < 40; i++) {
+      const t = i / 40 * 3.2 + c * 0.4;
+      const r = 0.15 + t * 0.22;
+      data.push({ x: [Math.cos(t + c * Math.PI) * r + gauss(rng, 0, 0.03), Math.sin(t + c * Math.PI) * r + gauss(rng, 0, 0.03)], y: c });
+    }
+  }
+}
+/* ---------- 网络 ---------- */
+let sizes = [2, 4, 4, 2], Ws = [], Bs = [], act = 'relu', lr = 0.5, l2 = 0, noAct = false;
+function initNet() {
+  Ws = []; Bs = [];
+  const rng = RNG(Math.floor(Math.random() * 999));
+  for (let l = 0; l < sizes.length - 1; l++) {
+    const w = [];
+    for (let i = 0; i < sizes[l + 1]; i++) {
+      w.push(Array.from({ length: sizes[l] }, () => gauss(rng, 0, 0.35)));
+    }
+    Ws.push(w); Bs.push(new Array(sizes[l + 1]).fill(0));
+  }
+  lossHist = []; epoch = 0;
+}
+const actf = (v, k) => k === 'tanh' ? Math.tanh(v) : k === 'sigmoid' ? 1 / (1 + Math.exp(-v)) : Math.max(0, v);
+const dactf = (y, k) => k === 'tanh' ? 1 - y * y : k === 'sigmoid' ? y * (1 - y) : (y > 0 ? 1 : 0);
+function forward(x) {
+  const as = [x];
+  let cur = x;
+  for (let l = 0; l < Ws.length; l++) {
+    const out = [];
+    for (let i = 0; i < Ws[l].length; i++) {
+      const z = Ws[l][i].reduce((s, w, j) => s + w * cur[j], 0) + Bs[l][i];
+      out.push(noAct && l < Ws.length - 1 ? z : actf(z, act));
+    }
+    as.push(out);
+    cur = out;
+  }
+  /* softmax */
+  const o = as[as.length - 1];
+  const m = Math.max(...o);
+  const es = o.map(v => Math.exp(v - m));
+  const s = es.reduce((a, b) => a + b, 0);
+  return { as, probs: es.map(e => e / s) };
+}
+function trainEpoch() {
+  /* 全批梯度下降：先累积整个数据集的梯度，再一次性更新（比逐样本更稳） */
+  let totLoss = 0;
+  const gW = Ws.map(w => w.map(r => r.map(() => 0)));
+  const gB = Bs.map(b => b.map(() => 0));
+  for (const p of data) {
+    const { as, probs } = forward(p.x);
+    totLoss += -Math.log(Math.max(1e-9, probs[p.y]));
+    let delta = probs.map((pr, i) => pr - (i === p.y ? 1 : 0));
+    for (let l = Ws.length - 1; l >= 0; l--) {
+      const prev = as[l];
+      const newDelta = new Array(prev.length).fill(0);
+      for (let i = 0; i < Ws[l].length; i++) {
+        for (let j = 0; j < prev.length; j++) {
+          gW[l][i][j] += delta[i] * prev[j] + l2 * Ws[l][i][j];
+          newDelta[j] += delta[i] * Ws[l][i][j];
+        }
+        gB[l][i] += delta[i];
+      }
+      if (l > 0) delta = newDelta.map((d, j) => d * (noAct ? 1 : dactf(prev[j], act)));
+    }
+  }
+  const n = data.length || 1;
+  for (let l = 0; l < Ws.length; l++) {
+    for (let i = 0; i < Ws[l].length; i++) {
+      for (let j = 0; j < Ws[l][i].length; j++) Ws[l][i][j] -= lr * gW[l][i][j] / n;
+      Bs[l][i] -= lr * gB[l][i] / n * 2;
+    }
+  }
+  epoch++;
+  const testLoss = testSet().reduce((a, p) => { const { probs } = forward(p.x); return a + -Math.log(Math.max(1e-9, probs[p.y])); }, 0) / testSet().length;
+  const trLoss = totLoss / data.length;
+  lossHist.push([trLoss, testLoss]);
+  if (lossHist.length > 300) lossHist.shift();
+  return { trLoss, testLoss };
+}
+function testSet() { return data.filter((_, i) => i % 5 === 4); }
+function trainSet() { return data.filter((_, i) => i % 5 !== 4); }
+/* ---------- 绘制 ---------- */
+const cv = document.getElementById('cv'), lc = document.getElementById('lc');
+let ctx = autoFit(cv, draw), lctx;
+(function () {
+  const dpr = Math.min(devicePixelRatio, 2);
+  const fit = () => { const r = lc.getBoundingClientRect(); lc.width = r.width * dpr; lc.height = r.height * dpr; lctx = lc.getContext('2d'); lctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  new ResizeObserver(() => { fit(); drawLoss(); }).observe(lc);
+  fit();
+})();
+let lossHist = [], epoch = 0, running = false, raf = 0;
+function draw() {
+  const w = cv.getBoundingClientRect().width, h = cv.getBoundingClientRect().height;
+  ctx.clearRect(0, 0, w, h);
+  const X = x => (x + 1.1) / 2.2 * w, Y = y => h - (y + 1.1) / 2.2 * h;
+  /* 背景 */
+  const step = 7;
+  for (let px = 0; px < w; px += step) for (let py = 0; py < h; py += step) {
+    const x = px / w * 2.2 - 1.1, y = (h - py) / h * 2.2 - 1.1;
+    const { probs } = forward([x, y]);
+    const p1 = probs[1];
+    ctx.fillStyle = `rgba(${Math.round(180 * p1 + 15)},${Math.round(118 * (1 - Math.abs(p1 - .5) * 2)) + 90},${Math.round(220 * (1 - p1) + 20)},${Math.abs(p1 - 0.5) * 0.5 + 0.05})`;
+    ctx.fillRect(px, py, step, step);
+  }
+  /* 数据 */
+  data.forEach(p => {
+    ctx.fillStyle = p.y ? '#b4482b' : '#0f766e';
+    ctx.beginPath(); ctx.arc(X(p.x[0]), Y(p.x[1]), 3.5, 0, 7); ctx.fill();
+  });
+  ctx.fillStyle = cssv('--muted'); ctx.font = '11px sans-serif';
+  ctx.fillText(`epoch ${epoch}`, 10, h - 8);
+}
+function drawLoss() {
+  if (!lctx) return;
+  const r = lc.getBoundingClientRect();
+  lctx.clearRect(0, 0, r.width, r.height);
+  if (lossHist.length < 2) {
+    lctx.fillStyle = cssv('--muted'); lctx.font = '11px sans-serif';
+    lctx.fillText('损失曲线', 8, 14);
+    return;
+  }
+  const mx = Math.max(...lossHist.flat()) * 1.05;
+  lossHist.forEach((pair, li) => {
+    pair.forEach((v, i) => {
+      lctx.fillStyle = i === 0 ? '#4338ca' : '#dc2626';
+      const x = 6 + li / (lossHist.length - 1) * (r.width - 12);
+      const y = r.height - 8 - (v / mx) * (r.height - 30);
+      lctx.fillRect(x, y, 1.5, 1.5);
+    });
+  });
+  lctx.fillStyle = '#4338ca'; lctx.font = '10px sans-serif'; lctx.fillText('训练损失', 8, 12);
+  lctx.fillStyle = '#dc2626'; lctx.fillText('测试损失', 8, 24);
+}
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function updRO(tr, te) {
+  const acc = testSet().filter(p => {
+    const { probs } = forward(p.x);
+    return (probs[1] > 0.5 ? 1 : 0) === p.y;
+  }).length / testSet().length;
+  document.getElementById('ro').innerHTML = `epoch <b>${epoch}</b>\n训练损失 <b>${tr.toFixed(3)}</b>\n测试损失 <b>${te.toFixed(3)}</b>\n测试准确率 <b>${(acc * 100).toFixed(0)}%</b>${!isFinite(tr) || tr > 10 ? '\n⚠ 发散！调低学习率' : te - tr > 0.35 ? '\n⚠ 过拟合中' : ''}`;
+  broadcastState(tr, te, acc);
+}
+/* 如果被同源页面（如训练实操台）内嵌，把当前状态广播出去——让外层页面能显示
+   一个真的跟着这个模拟器实时变化的读数，而不是只有一个自我勾选的任务清单 */
+function broadcastState(tr, te, acc) {
+  if (window.parent === window) return;
+  window.parent.postMessage({
+    type: 'aic-mlp-state',
+    layers: sizes.length - 2, neuronsPerLayer: neur, lr, l2, act, noAct,
+    dataType, epoch, trainLoss: tr, testLoss: te, acc,
+  }, location.origin);
+}
+function loop() {
+  if (!running) return;
+  const { trLoss, testLoss } = trainEpoch();
+  draw(); drawLoss(); updRO(trLoss, testLoss);
+  if (!isFinite(trLoss)) { running = false; document.getElementById('run').textContent = '训练 ▶'; }
+  raf = requestAnimationFrame(loop);
+}
+document.getElementById('run').addEventListener('click', () => {
+  running = !running;
+  document.getElementById('run').textContent = running ? '暂停 ■' : '训练 ▶';
+  if (running) loop();
+});
+document.getElementById('reset').addEventListener('click', () => { initNet(); draw(); drawLoss(); broadcastState(NaN, NaN, 0); });
+document.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-d]').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  dataType = b.dataset.d; genData(); initNet(); draw(); drawLoss(); broadcastState(NaN, NaN, 0);
+}));
+document.querySelector('[data-d="xor"]').classList.add('on');
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '隐藏层数', min: 1, max: 4, value: 2, onInput: v => { sizes = [2, ...Array(v).fill(neur), 2]; initNet(); draw(); broadcastState(NaN, NaN, 0); } }));
+let neur = 4;
+const sw = slider({ label: '每层神经元', min: 2, max: 8, value: 4, onInput: v => { neur = v; sizes = [2, ...Array(sizes.length - 2).fill(v), 2]; initNet(); draw(); broadcastState(NaN, NaN, 0); } });
+ctls.append(sw);
+ctls.append(slider({ label: '学习率', min: 1, max: 300, value: 50, fmt: v => (v / 100).toFixed(2), onInput: v => { lr = v / 100; broadcastState(NaN, NaN, 0); } }));
+/* 全批更新下学习率含义更直观：0.5 起步 */
+ctls.append(slider({ label: 'L2 正则化', min: 0, max: 30, value: 0, fmt: v => (v / 1000).toFixed(3), onInput: v => l2 = v / 1000 }));
+const actSel = document.createElement('div');
+actSel.className = 'ctl';
+actSel.innerHTML = `<label><span>激活函数</span></label><select id="actSel"><option value="relu">ReLU</option><option value="tanh">tanh</option><option value="sigmoid">Sigmoid</option></select>`;
+ctls.append(actSel);
+actSel.querySelector('select').addEventListener('change', e => { act = e.target.value; initNet(); draw(); });
+document.getElementById('bz').append(brkSwitch('去掉激活函数（纯线性）', v => { noAct = v; initNet(); draw(); }));
+genData(); initNet(); draw();
+</script>
+</body></html>

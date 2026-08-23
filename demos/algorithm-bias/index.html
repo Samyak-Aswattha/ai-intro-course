@@ -1,0 +1,124 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>偏见模拟器</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; gap:12px; padding:14px; overflow-y:auto; }
+  .simrow { display:flex; gap:12px; }
+  .pop { flex:1; border:1px solid var(--border); border-radius:12px; padding:12px; background:var(--surface); }
+  .pop h4 { margin:0 0 8px; font-size:13px; }
+  .dots { display:grid; grid-template-columns:repeat(15, 1fr); gap:4px; }
+  .dot { aspect-ratio:1; border-radius:4px; position:relative; }
+  .dot.a { background:var(--c3); } .dot.b { background:var(--c3); opacity:.75; }
+  .dot.q { background:var(--accent); } .dot.q.b { background:var(--accent); opacity:.8; }
+  .dot.sel { outline:2.5px solid var(--ok); outline-offset:1px; }
+  .dot.rej { position:relative; }
+  .dot.rej::after { content:"✕"; position:absolute; inset:0; display:grid; place-items:center; color:rgba(255,255,255,.9); font-size:9px; font-weight:900; }
+  .metrics { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; }
+  .mt { border:1px solid var(--border); border-radius:10px; padding:8px 10px; background:var(--surface); text-align:center; }
+  .mt .k { font-size:10.5px; color:var(--muted); }
+  .mt .v { font-family:var(--mono); font-size:17px; font-weight:700; }
+  .mt .v.warnv { color:var(--err); }
+  .mt .v.okv { color:var(--ok); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">算法偏见 · 招聘模拟器</span><span class="s">控制历史数据偏见与录取阈值，看两个群体的命运分岔；试试"色盲策略"为何救不了公平</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="simrow">
+      <div class="pop"><h4>🟦 群体 A（多数群）</h4><div class="dots" id="dA"></div></div>
+      <div class="pop"><h4>🟧 群体 B（少数群）</h4><div class="dots" id="dB"></div></div>
+    </div>
+    <div class="metrics" id="mts"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">模型设定</div>
+    <div id="ctls"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 三种"公平"的冲突</div></div>
+    <div class="btn-row">
+      <button class="btn sm ghost" id="colorblind">😷 色盲策略（不看群体）</button>
+      <button class="btn sm ghost" id="quota">⚖️ 结果均等（配额制）</button>
+    </div>
+    <div class="card" style="font-size:12px;color:var(--muted);line-height:1.75">
+      圆点 = 申请人（含资质分）；描边 = 录取；✕ = 被拒。<br>
+      历史偏见让 B 群体的<b>观察分数系统性偏低</b>——即使真实资质相同。<br><br>
+      体验要点：校准公平与机会均等<b>不可兼得</b>（Kleinberg 定理）；色盲策略因代理变量失效；每种修正都有人付出代价——<b>取舍必须公开做出</b>。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { slider, brkSwitch, RNG, gauss } from '../_shared/demo.js';
+let bias = 0.15, thr = 0.6, colorblind = false, quota = false, data = { A: [], B: [] };
+function gen() {
+  const rng = RNG(2024);
+  data = { A: [], B: [] };
+  for (let i = 0; i < 45; i++) {
+    const trueQ = Math.max(0, Math.min(1, gauss(rng, 0.55, 0.18)));
+    data.A.push({ trueQ, obs: Math.max(0, Math.min(1, trueQ + gauss(rng, 0, 0.08))) });
+  }
+  for (let i = 0; i < 15; i++) {
+    const trueQ = Math.max(0, Math.min(1, gauss(rng, 0.55, 0.18)));
+    /* 历史偏见：B 群体观察分被压低 */
+    data.B.push({ trueQ, obs: Math.max(0, Math.min(1, trueQ - bias + gauss(rng, 0, 0.08))) });
+  }
+}
+function admit() {
+  const res = { A: [], B: [] };
+  for (const g of ['A', 'B']) {
+    for (const p of data[g]) {
+      const useObs = !colorblind ? p.obs : p.obs + (g === 'B' ? bias * 0 : 0); /* 色盲：不看群体标签本身，但观察分仍带偏 */
+      res[g].push(useObs >= thr);
+    }
+  }
+  if (quota) {
+    /* 结果均等：两组录取率对齐到 A 的水平 */
+    ['A', 'B'].forEach(g => {
+      const rate = res.A.filter(Boolean).length / res.A.length;
+      const list = data[g].map((p, i) => ({ i, s: p.obs })).sort((a, b) => b.s - a.s);
+      const want = Math.round(rate * list.length);
+      res[g] = new Array(list.length).fill(false);
+      list.slice(0, want).forEach(x => res[g][x.i] = true);
+    });
+  }
+  return res;
+}
+function stats(res) {
+  const out = {};
+  for (const g of ['A', 'B']) {
+    const sel = res[g];
+    const pool = data[g];
+    const nSel = sel.filter(Boolean).length;
+    const tpr = sel.filter((s, i) => s && pool[i].trueQ > 0.5).length / Math.max(1, pool.filter(p => p.trueQ > 0.5).length);
+    const fpr = sel.filter((s, i) => s && pool[i].trueQ <= 0.5).length / Math.max(1, pool.filter(p => p.trueQ <= 0.5).length);
+    const qAvg = sel.reduce((a, s, i) => a + (s ? pool[i].trueQ : 0), 0) / Math.max(1, nSel);
+    out[g] = { rate: nSel / pool.length, tpr, fpr, qAvg };
+  }
+  return out;
+}
+function render() {
+  const res = admit();
+  for (const g of ['A', 'B']) {
+    const box = document.getElementById(g === 'A' ? 'dA' : 'dB');
+    box.innerHTML = '';
+    data[g].forEach((p, i) => {
+      const d = document.createElement('div');
+      d.className = 'dot' + (p.trueQ > 0.5 ? ' q' : '') + (g === 'B' ? ' b' : '') + (res[g][i] ? ' sel' : ' rej');
+      d.title = `真实资质 ${(p.trueQ * 100).toFixed(0)}｜模型看到 ${(p.obs * 100).toFixed(0)}`;
+      box.append(d);
+    });
+  }
+  const st = stats(res);
+  const gap = (st.B.rate - st.A.rate) * 100;
+  document.getElementById('mts').innerHTML = `
+    <div class="mt"><div class="k">A 录取率</div><div class="v">${(st.A.rate * 100).toFixed(0)}%</div></div>
+    <div class="mt"><div class="k">B 录取率</div><div class="v ${Math.abs(gap) > 15 ? 'warnv' : 'okv'}">${(st.B.rate * 100).toFixed(0)}%</div></div>
+    <div class="mt"><div class="k">机会差距</div><div class="v ${Math.abs(gap) > 15 ? 'warnv' : 'okv'}">${gap > 0 ? '+' : ''}${gap.toFixed(0)}pp</div></div>
+    <div class="mt"><div class="k">录取者平均资质</div><div class="v">A ${st.A.qAvg.toFixed(2)} / B ${st.B.qAvg.toFixed(2)}</div></div>`;
+}
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '历史数据偏见强度', min: 0, max: 40, value: 15, fmt: v => (v / 100).toFixed(2), onInput: v => { bias = v / 100; gen(); render(); } }));
+ctls.append(slider({ label: '录取阈值', min: 20, max: 90, value: 60, fmt: v => (v / 100).toFixed(2), onInput: v => { thr = v / 100; render(); } }));
+document.getElementById('bz').append(brkSwitch('色盲模式（不看群体标签）', v => { colorblind = v; render(); }));
+document.getElementById('colorblind').addEventListener('click', () => { colorblind = !colorblind; render(); });
+document.getElementById('quota').addEventListener('click', () => { quota = !quota; render(); });
+gen(); render();
+</script>
+</body></html>

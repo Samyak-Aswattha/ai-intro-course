@@ -1,0 +1,105 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>分词器透视</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:16px; gap:14px; overflow-y:auto; }
+  .toks { display:flex; gap:6px; flex-wrap:wrap; padding:16px; border:1.5px solid var(--border); border-radius:14px; background:var(--surface); min-height:90px; }
+  .tk { padding:6px 12px; border-radius:8px; font-size:14.5px; border:1px solid var(--border); background:var(--surface2); position:relative; animation:tkin .2s ease; }
+  .tk.merged { background:var(--accent-soft); border-color:var(--accent); }
+  @keyframes tkin { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+  .tk .id { display:block; font-family:var(--mono); font-size:10px; color:var(--muted); text-align:center; margin-top:2px; }
+  .stat { display:flex; gap:10px; flex-wrap:wrap; }
+  .st { border:1px solid var(--border); border-radius:10px; padding:10px 16px; background:var(--surface); }
+  .st .k { font-size:11px; color:var(--muted); }
+  .st .v { font-family:var(--mono); font-size:20px; font-weight:700; color:var(--accent); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">分词器（Tokenizer）透视</span><span class="s">输入任意文本，看大模型眼里的"词"如何切分——计费、上下文限制与 strawberry 之谜的钥匙</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <textarea id="inp" rows="3" style="font-size:15px">人工智能导论：Understanding how LLMs "think" — 试试 strawberry 里有几个 r？</textarea>
+    <div class="toks" id="toks"></div>
+    <div class="stat">
+      <div class="st"><div class="k">字符数</div><div class="v" id="s1">0</div></div>
+      <div class="st"><div class="k">Token 数</div><div class="v" id="s2">0</div></div>
+      <div class="st"><div class="k">膨胀率（token/字）</div><div class="v" id="s3">—</div></div>
+      <div class="st"><div class="k">估算"字数"消耗</div><div class="v" id="s4">—</div></div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">试试这些</div>
+    <div class="btn-row" id="presets"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--accent-soft);border:1px solid var(--accent);vertical-align:-1px"></span> 命中词表的高频子词（合并成一块）
+      <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--surface2);border:1px solid var(--border);vertical-align:-1px"></span> 没命中、拆回单字符<br><br>
+      切分规则（BPE 风格简化版）：英文按<b>高频子词</b>合并，中文按<b>词与常用搭配</b>，生僻字与 emoji 常被拆成多段。<br><br>
+      所以："strawberry" 可能是一个 token，但"数其中几个 r"对模型是<b>视觉/字符级任务</b>——它看到的是 token 编号，不是字母。
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      计费与上下文窗口都按 token 计。经验值：英文 1 token ≈ 0.75 词；中文 1 字 ≈ 0.6–1.2 token（看词表）。
+    </div>
+  </div>
+</div>
+<script type="module">
+/* 简化 BPE：高频词典匹配 */
+const DICT = [
+  'Understanding', 'artificial', 'intelligence', 'strawberry', 'think', 'LLMs', 'how',
+  '人工智能', '导论', '智能', '人工', '试试', '几个', '导', '论',
+  'ing', 'tion', 'ize', 'ai', 'model', 'Trans', 'former', 'GPT', 'neural', 'network',
+  '深度', '学习', '神经', '网络', '机器', '大模型', '语言', '注意力', '机制',
+  'the', ' The', ' how', ' what', 'ing', 'ed', 'er', 'ly', ' ', '" ', '"', '—',
+];
+function tokenize(text) {
+  const toks = [];
+  let i = 0;
+  while (i < text.length) {
+    let matched = null;
+    for (const d of DICT) {
+      if (text.startsWith(d, i)) { if (!matched || d.length > matched.length) matched = d; }
+    }
+    /* 中文单字回退 */
+    if (!matched) {
+      const ch = text[i];
+      if (/[\u4e00-\u9fff]/.test(ch)) matched = ch;
+    }
+    if (matched) { toks.push({ t: matched, merged: matched.length > 1 }); i += matched.length; }
+    else { toks.push({ t: text[i], merged: false }); i++; }
+  }
+  return toks;
+}
+/* 每个 token 字符串第一次出现时按顺序分配一个稳定 ID（0,1,2…），同一个 token 永远拿同一个 ID——
+   这是一个真实、一致的小词表映射。之前那版用字符编码算出"哈希值"充当 ID，在 1000~90999
+   间跳来跳去，看起来像真的 GPT 词表 ID，其实和 token 本身没有语义对应关系。 */
+const VOCAB_IDS = new Map();
+function idOf(tok) {
+  if (!VOCAB_IDS.has(tok)) VOCAB_IDS.set(tok, VOCAB_IDS.size);
+  return VOCAB_IDS.get(tok);
+}
+function render() {
+  const text = document.getElementById('inp').value;
+  const toks = tokenize(text);
+  const box = document.getElementById('toks');
+  box.innerHTML = '';
+  toks.forEach(({ t, merged }) => {
+    const d = document.createElement('div');
+    d.className = 'tk' + (merged ? ' merged' : '');
+    d.innerHTML = `${t.replace(/</g, '&lt;').replace(/ /g, '␣')}<span class="id">#${idOf(t)}</span>`;
+    box.append(d);
+  });
+  document.getElementById('s1').textContent = text.length;
+  document.getElementById('s2').textContent = toks.length;
+  document.getElementById('s3').textContent = text.length ? (toks.length / text.length).toFixed(2) : '—';
+  document.getElementById('s4').textContent = toks.length + ' tok';
+}
+document.getElementById('inp').addEventListener('input', render);
+const PRESETS = ['strawberry', '人工智能正在改变世界', 'Attention is all you need', '🤖🚀✨ 你好世界'];
+const pe = document.getElementById('presets');
+PRESETS.forEach(p => {
+  const b = document.createElement('button');
+  b.className = 'btn sm ghost';
+  b.textContent = p;
+  b.addEventListener('click', () => { document.getElementById('inp').value = p; render(); });
+  pe.append(b);
+});
+render();
+</script>
+</body></html>

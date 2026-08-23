@@ -1,0 +1,177 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>CNN 立体解剖</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<script type="importmap">{"imports":{"three":"../../assets/lib/three.module.js"}}</script>
+<style>
+  .stage { position:relative; }
+  #info { position:absolute; right:14px; top:14px; width:220px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px; font-size:12.5px; line-height:1.7; display:none; }
+  #info b { color:var(--accent); }
+</style></head><body>
+<div class="demo-head"><span class="badge">3D 场景</span><span class="t">CNN 立体解剖</span><span class="s">拖动旋转这座卷积网络：图像逐层变形——卷积扫出多通道特征图、池化层层缩小、汇入全连接</span></div>
+<div class="demo-body">
+  <div class="stage demo-stage">
+    <canvas id="c3d" class="stage-canvas"></canvas>
+    <div id="info"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">数据流</div>
+    <div class="btn-row">
+      <button class="btn sm" id="flow">播放数据流 ▶</button>
+      <button class="btn sm ghost" id="reset">复位视角</button>
+    </div>
+    <div class="panel-title">层说明（点击 3D 中的层）</div>
+    <div class="card" id="layerInfo" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      点亮一层查看它的职责。整座架构：<b>输入 → 卷积×2 → 池化 → 卷积×2 → 池化 → 全连接 → 输出</b>（LeNet 风格）。
+    </div>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from '../../assets/lib/OrbitControls.js';
+
+const canvas = document.getElementById('c3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(48, 1, 0.1, 100);
+cam.position.set(2, 5, 13);
+const controls = new OrbitControls(cam, canvas);
+controls.enableDamping = true;
+const dark = document.documentElement.dataset.theme === 'dark';
+scene.background = new THREE.Color(dark ? 0x16140f : 0xfaf9f6);
+scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+const dl = new THREE.DirectionalLight(0xffffff, 0.9);
+dl.position.set(5, 9, 7); scene.add(dl);
+
+/* 层配置：[类型, 宽(格), 高, 通道, 名称, 说明] */
+const LAYERS = [
+  { t: 'in', w: 12, h: 12, ch: 1, x: -8.4, name: '输入图像', desc: '12×12 像素的灰度图（比如手写数字）。每个像素是一个数值。' },
+  { t: 'conv', w: 10, h: 10, ch: 4, x: -6.2, name: '卷积层 1（4 通道）', desc: '4 个不同的 3×3 卷积核各扫一遍输入，得到 4 张特征图——每张盯着一种局部模式（边、角、点）。' },
+  { t: 'conv', w: 8, h: 8, ch: 4, x: -4.2, name: '卷积层 2（4 通道）', desc: '在上一层特征图上继续卷积——检测"模式的模式"（两个角组成的弧线等）。' },
+  { t: 'pool', w: 4, h: 4, ch: 4, x: -2.3, name: '最大池化', desc: '每 2×2 区域只留最大值：尺寸减半、信息浓缩、平移微扰不再敏感。' },
+  { t: 'conv', w: 4, h: 4, ch: 8, x: -0.2, name: '卷积层 3（8 通道）', desc: '更深的卷积：通道更多（8 种模式检测器），空间更小——特征越来越抽象。' },
+  { t: 'pool', w: 2, h: 2, ch: 8, x: 2.0, name: '池化 2', desc: '再次压缩。到这里，"图像"已经被翻译成 2×2×8 = 32 维的特征向量。' },
+  { t: 'fc', w: 1, h: 1, ch: 10, x: 5.2, name: '全连接层', desc: '32 个特征与 10 个输出神经元全连接——每个神经元代表一个数字类别（0-9）。' },
+  { t: 'out', w: 1, h: 1, ch: 1, x: 7.6, name: '输出（softmax）', desc: '10 个分数经 softmax 变成概率：这是"7"的置信度 93.2%。' },
+];
+const layerMeshes = [];
+const group = new THREE.Group();
+scene.add(group);
+function buildLayer(L, li) {
+  const g = new THREE.Group();
+  const cellSize = 0.22;
+  const chGap = 0.34;
+  const colors = [0x0f766e, 0xb45309, 0x4338ca, 0xbe185d, 0x0e7490, 0x7c3aed, 0x065f46, 0xb4482b];
+  for (let c = 0; c < L.ch; c++) {
+    const planeGeo = new THREE.PlaneGeometry(L.w * cellSize, L.h * cellSize);
+    const mat = new THREE.MeshStandardMaterial({
+      color: colors[c % colors.length],
+      transparent: true, opacity: 0.62,
+      side: THREE.DoubleSide, roughness: 0.55,
+    });
+    const m = new THREE.Mesh(planeGeo, mat);
+    m.position.z = (c - (L.ch - 1) / 2) * chGap;
+    g.add(m);
+    /* 网格线框 */
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(planeGeo),
+      new THREE.LineBasicMaterial({ color: dark ? 0x141311 : 0xffffff, transparent: true, opacity: 0.5 })
+    );
+    m.add(edges);
+  }
+  g.position.x = L.x;
+  group.add(g);
+  g.userData = L;
+  layerMeshes.push(g);
+  /* 标签 */
+  const label = makeLabel(L.name, L.t === 'pool' || L.t === 'in' ? '#8a857b' : dark ? '#e9e4d9' : '#55524b');
+  label.position.set(L.x, -2.6, 0);
+  group.add(label);
+  return g;
+}
+function makeLabel(text, color) {
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 26px sans-serif';
+  const w = ctx.measureText(text).width + 20;
+  c.width = w; c.height = 34;
+  ctx.font = 'bold 26px sans-serif';
+  ctx.fillStyle = color;
+  ctx.fillText(text, 10, 26);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
+  sp.scale.set(w / 100, 0.34, 1);
+  return sp;
+}
+LAYERS.forEach(buildLayer);
+
+/* 连接箭头 */
+LAYERS.slice(0, -1).forEach((L, i) => {
+  const N = LAYERS[i + 1];
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(L.x + L.w * 0.11 + 0.1, 0, 0),
+    new THREE.Vector3(N.x - N.w * 0.11 - 0.1, 0, 0),
+  ]);
+  group.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: dark ? 0x4b4436 : 0xcfc9bc })));
+});
+
+/* 拾取 */
+const ray = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const info = document.getElementById('info');
+let selected = null;
+canvas.addEventListener('pointermove', e => {
+  const r = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  ray.setFromCamera(mouse, cam);
+  const hits = ray.intersectObjects(layerMeshes, true);
+  const hitGroup = hits[0] ? hits[0].object.parent : null;
+  canvas.style.cursor = hitGroup ? 'pointer' : 'grab';
+});
+canvas.addEventListener('click', () => {
+  ray.setFromCamera(mouse, cam);
+  const hits = ray.intersectObjects(layerMeshes, true);
+  const hitGroup = hits[0] ? hits[0].object.parent : null;
+  if (hitGroup) {
+    if (selected) selected.children.forEach(m => m.material.emissive?.setScalar(0));
+    selected = hitGroup;
+    hitGroup.children.forEach(m => { if (m.material.emissive) m.material.emissive.set(0xffffff), m.material.emissiveIntensity = 0.25; });
+    const L = hitGroup.userData;
+    info.style.display = 'block';
+    info.innerHTML = `<b>${L.name}</b><br>${L.desc}`;
+    document.getElementById('layerInfo').innerHTML = `<b style="color:var(--text)">${L.name}</b>：${L.desc}`;
+  }
+});
+document.getElementById('reset').addEventListener('click', () => { cam.position.set(2, 5, 13); controls.target.set(0, 0, 0); });
+
+/* 数据流动画：一个亮方块从输入跑向输出 */
+const pulse = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 14), new THREE.MeshBasicMaterial({ color: 0xb4482b }));
+group.add(pulse);
+let flowing = false, ft = 0;
+document.getElementById('flow').addEventListener('click', e => { flowing = !flowing; e.target.textContent = flowing ? '停止 ■' : '播放数据流 ▶'; });
+
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  cam.aspect = r.width / r.height; cam.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas.parentElement);
+resize();
+(function animate() {
+  requestAnimationFrame(animate);
+  if (flowing) {
+    ft += 0.0045;
+    if (ft > 1) ft = 0;
+    const i = Math.min(LAYERS.length - 2, Math.floor(ft * (LAYERS.length - 1)));
+    const t = ft * (LAYERS.length - 1) - i;
+    const a = LAYERS[i], b = LAYERS[Math.min(LAYERS.length - 1, i + 1)];
+    pulse.position.x = a.x + (b.x - a.x) * t;
+    pulse.position.y = Math.sin(ft * 30) * 1.2;
+    /* 点亮经过的层 */
+    layerMeshes[i].children.forEach(m => { m.material.emissive?.set(0xb4482b); m.material.emissiveIntensity = 0.35; });
+  }
+  controls.update();
+  renderer.render(scene, cam);
+})();
+</script>
+</body></html>

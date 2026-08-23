@@ -1,0 +1,118 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>激活函数画廊</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:16px; gap:8px; }
+  .plot { flex:1; position:relative; min-height:0; border:1px solid var(--border); border-radius:12px; background:var(--surface); overflow:hidden; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .cards { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; }
+  .acard { border:1.5px solid var(--border); border-radius:10px; padding:8px 10px; cursor:pointer; background:var(--surface); transition:all .15s; }
+  .acard.on { border-color:var(--accent); background:var(--accent-soft); }
+  .acard .nm { font-family:var(--mono); font-weight:700; font-size:13px; }
+  .acard .fm { font-size:10.5px; color:var(--muted); margin-top:2px; font-family:var(--mono); }
+  .desc { font-size:13px; color:var(--text-2, var(--text)); line-height:1.75; }
+  .desc b { color:var(--accent); }
+</style></head><body>
+<div class="demo-head"><span class="badge">互动</span><span class="t">激活函数画廊</span><span class="s">拖动输入滑杆，看信号如何被四种函数"弯折"——以及没有弯折时会发生什么</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="plot"><canvas id="cv"></canvas></div>
+    <div class="cards" id="cards"></div>
+    <div class="desc" id="desc"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">输入信号</div>
+    <div id="ctls"></div>
+    <div class="readout" id="ro"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      线性变换的复合还是线性——<b>没有激活函数，一百层白叠</b>。切换到「无激活」模式，再看那条笔直的输出线。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, slider, brkSwitch } from '../_shared/demo.js';
+const FNS = [
+  { k: 'sigmoid', n: 'Sigmoid', f: 'σ(x)=1/(1+e⁻ˣ)', d: '把任意数压进 0~1。<b>优点</b>：可当概率。<b>缺点</b>：两端躺平（梯度≈0），深层网络传着传着梯度就没了——<b>梯度消失的元凶</b>。' },
+  { k: 'tanh', n: 'Tanh', f: 'tanh(x)', d: 'Sigmoid 的表亲，输出 −1~1 且零中心。<b>好一点</b>（均值靠近 0），<b>仍会饱和</b>。LSTM 内部常用它。' },
+  { k: 'relu', n: 'ReLU', f: 'max(0, x)', d: '负半轴归零、正半轴直通。<b>便宜、不饱和</b>，2010 年代默认选项。代价：负半轴"死区"（Dead ReLU）。' },
+  { k: 'gelu', n: 'GELU', f: 'x·Φ(x)', d: 'ReLU 的平滑版（概率门控）。<b>Transformer 标配</b>——ChatGPT 里每个词都要过它。' },
+  { k: 'none', n: '无激活', f: 'f(x)=x', d: '<b>什么都不做</b>。叠一百层线性 = 一层线性（矩阵乘法可合并）。异或解不开、深度学习不存在。' },
+];
+let cur = 0, x0 = 1.2, stacked = false;
+const cv = document.getElementById('cv');
+let ctx = autoFit(cv, draw);
+const apply = (v, k) => {
+  if (k === 'sigmoid') return 1 / (1 + Math.exp(-v));
+  if (k === 'tanh') return Math.tanh(v);
+  if (k === 'relu') return Math.max(0, v);
+  if (k === 'gelu') return 0.5 * v * (1 + Math.tanh(0.7978845608 * (v + 0.044715 * v ** 3)));
+  return v;
+};
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const X = x => 30 + (x + 4) / 8 * (w - 50);
+  const Y = y => h / 2 - y * (h / 2 - 24);
+  /* 坐标轴 */
+  ctx.strokeStyle = cssv('--border');
+  ctx.beginPath(); ctx.moveTo(X(-4), Y(0)); ctx.lineTo(X(4), Y(0));
+  ctx.moveTo(X(0), 8); ctx.lineTo(X(0), h - 8); ctx.stroke();
+  ctx.fillStyle = cssv('--muted'); ctx.font = '10px sans-serif';
+  [-4, -2, 0, 2, 4].forEach(v => ctx.fillText(v, X(v) - 4, Y(0) + 14));
+  [-2, 0, 2].forEach(v => { if (v !== 0) ctx.fillText(v, X(0) + 4, Y(v) + 3); });
+  /* 函数曲线 */
+  ctx.strokeStyle = cssv('--accent'); ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let x = -4; x <= 4.01; x += 0.05) {
+    let y = x;
+    if (stacked) { for (let i = 0; i < 5; i++) y = apply(y, FNS[cur].k); }
+    else y = apply(x, FNS[cur].k);
+    y = Math.max(-3, Math.min(3, y));
+    x === -4 ? ctx.moveTo(X(x), Y(y)) : ctx.lineTo(X(x), Y(y));
+  }
+  ctx.stroke(); ctx.lineWidth = 1;
+  /* 当前输入点 */
+  let y0 = x0;
+  if (stacked) { for (let i = 0; i < 5; i++) y0 = apply(y0, FNS[cur].k); }
+  else y0 = apply(x0, FNS[cur].k);
+  y0 = Math.max(-3, Math.min(3, y0));
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = '#4338ca';
+  ctx.beginPath(); ctx.moveTo(X(x0), Y(0)); ctx.lineTo(X(x0), Y(y0)); ctx.lineTo(X(0), Y(y0)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#4338ca';
+  ctx.beginPath(); ctx.arc(X(x0), Y(y0), 5, 0, 7); ctx.fill();
+  ctx.font = '12px var(--mono)';
+  ctx.fillText(`输入 ${x0.toFixed(2)} → 输出 ${y0.toFixed(3)}`, X(x0) + 8, Y(y0) - 8);
+  if (stacked) { ctx.fillStyle = cssv('--c3'); ctx.font = 'bold 12px sans-serif'; ctx.fillText('× 5 层叠加', 12, 20); }
+}
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+const cards = document.getElementById('cards');
+FNS.forEach((f, i) => {
+  const c = document.createElement('div');
+  c.className = 'acard' + (i === 0 ? ' on' : '');
+  c.innerHTML = `<div class="nm">${f.n}</div><div class="fm">${f.f}</div>`;
+  c.addEventListener('click', () => {
+    cards.querySelectorAll('.acard').forEach(x => x.classList.remove('on'));
+    c.classList.add('on');
+    cur = i;
+    document.getElementById('desc').innerHTML = `<b>${f.n}</b>：${f.d}`;
+    draw(); upd();
+  });
+  cards.append(c);
+});
+function upd() {
+  let y0 = x0;
+  if (stacked) { for (let i = 0; i < 5; i++) y0 = apply(y0, FNS[cur].k); }
+  else y0 = apply(x0, FNS[cur].k);
+  document.getElementById('ro').innerHTML = `f(${x0.toFixed(2)}) = <b>${y0.toFixed(4)}</b>${stacked ? '\n（经过 5 层激活）' : ''}`;
+}
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '输入 x', min: -40, max: 40, value: 12, fmt: v => (v / 10).toFixed(1), onInput: v => { x0 = v / 10; draw(); upd(); } }));
+document.getElementById('bz').append(brkSwitch('叠加 5 层（看梯度消失/爆炸）', v => { stacked = v; draw(); upd(); }));
+document.getElementById('desc').innerHTML = `<b>Sigmoid</b>：${FNS[0].d}`;
+draw(); upd();
+</script>
+</body></html>

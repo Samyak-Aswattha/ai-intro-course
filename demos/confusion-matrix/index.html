@@ -1,0 +1,180 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>混淆矩阵计算器</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; }
+  canvas#cv { position:absolute; inset:0; width:100%; height:100%; cursor:ew-resize; }
+  .thrbar { position:absolute; left:16px; right:16px; bottom:14px; }
+  .thrbar .lbl { display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted); margin-bottom:2px; }
+  .thrbar input { width:100%; }
+  .matrix { display:grid; grid-template-columns:auto 74px 74px; gap:4px; align-items:center; margin-bottom:12px; }
+  .matrix .hd { text-align:center; font-size:10.5px; color:var(--muted); }
+  .matrix .side { font-size:10.5px; color:var(--muted); text-align:right; padding-right:6px; }
+  .matrix .cell { height:48px; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .matrix .cell b { font-size:17px; font-family:var(--mono); }
+  .matrix .cell span { font-size:9px; opacity:.8; }
+  .cell.tp { background:#dcf0e2; color:#15803d; } .cell.fn { background:#fde8d4; color:#b45309; }
+  .cell.fp { background:#f8dcdc; color:#b91c1c; } .cell.tn { background:#e0e8fb; color:#1d4ed8; }
+  .metrics { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric { border:1px solid var(--border); border-radius:8px; padding:7px 9px; background:var(--surface); }
+  .metric .k { font-size:10.5px; color:var(--muted); }
+  .metric .v { font-family:var(--mono); font-size:16px; font-weight:700; color:var(--text); }
+  .best { font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .best b { color:var(--accent); font-family:var(--mono); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">混淆矩阵 · 阈值权衡</span><span class="s">每个点是一个真实样本，拖动判定阈值——看精确率与召回率此消彼长</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="thrbar">
+      <div class="lbl"><span>低阈值（宁可错杀）</span><span>判定阈值 <b id="thrv" style="font-family:var(--mono);color:var(--text)">0.50</b></span><span>高阈值（宁可放过）</span></div>
+      <input type="range" id="thr" min="0" max="100" value="50">
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">场景</div>
+    <div class="tabs" id="scenes"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8" id="sceneDesc"></div>
+    <div class="matrix" id="mx"></div>
+    <div class="metrics" id="mts"></div>
+    <div class="best" id="best"></div>
+    <div class="panel-title" style="margin-top:14px">如何读</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      <b style="color:var(--text)">精确率</b> = 我说是的里面多少真是<br>
+      <b style="color:var(--text)">召回率</b> = 真是的里面我抓住多少<br>
+      <b style="color:var(--text)">F1</b> = 两者的调和平均（偏科会掉分）<br><br>
+      癌症筛查场景里把阈值拖到最左——精确率暴跌、召回率满分。<b>你会把阈值放在哪？这道题没有技术答案，只有价值答案。</b>
+    </div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, RNG, gauss, clamp } from '../_shared/demo.js';
+
+/* 每个场景是一批真实样本的预测分数分布（正类/负类各自一个近似正态分布，互相重叠），
+   而不是手工凑的四个格子人数——这样阈值一动，TP/FN/FP/TN 永远从同一批样本里重新分类，
+   总数天然守恒，不会出现人数凭空消失/多出来的问题 */
+const SCENES = [
+  { name: '癌症筛查', desc: '漏诊（FN）可能致命，误诊（FP）带来焦虑与复查。医生倾向高召回。', nPos: 100, nNeg: 900, muPos: 0.66, sdPos: 0.22, muNeg: 0.25, sdNeg: 0.19, seed: 11 },
+  { name: '垃圾邮件', desc: '误拦正常邮件（FP）后果严重，漏掉垃圾（FN）只是小烦。倾向高精确。', nPos: 150, nNeg: 850, muPos: 0.8, sdPos: 0.15, muNeg: 0.14, sdNeg: 0.13, seed: 22 },
+  { name: '嫌疑人逮捕', desc: 'FP 是冤枉好人，FN 是放走罪犯。宪法精神倾向高精确（无罪推定）。', nPos: 60, nNeg: 940, muPos: 0.56, sdPos: 0.25, muNeg: 0.36, sdNeg: 0.22, seed: 33 },
+  { name: '论文查重', desc: 'FP 冤枉学生抄袭，FN 漏掉真抄袭。学术声誉 vs 学术不端。', nPos: 80, nNeg: 920, muPos: 0.71, sdPos: 0.18, muNeg: 0.2, sdNeg: 0.15, seed: 44 },
+];
+
+function makeSample(s) {
+  const rng = RNG(s.seed);
+  const pts = [];
+  for (let i = 0; i < s.nPos; i++) pts.push({ pos: true, score: clamp(gauss(rng, s.muPos, s.sdPos), 0.01, 0.99), jitter: rng() });
+  for (let i = 0; i < s.nNeg; i++) pts.push({ pos: false, score: clamp(gauss(rng, s.muNeg, s.sdNeg), 0.01, 0.99), jitter: rng() });
+  return pts;
+}
+
+let scene = SCENES[0];
+let sample = makeSample(scene);
+let thr = 0.5;
+let bestF1 = 0;
+
+const cv = document.getElementById('cv');
+const ctx = autoFit(cv, draw);
+const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+
+function counts() {
+  let tp = 0, fn = 0, fp = 0, tn = 0;
+  for (const p of sample) {
+    const predPos = p.score >= thr;
+    if (p.pos && predPos) tp++;
+    else if (p.pos && !predPos) fn++;
+    else if (!p.pos && predPos) fp++;
+    else tn++;
+  }
+  return { tp, fn, fp, tn };
+}
+
+function draw() {
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+  const pad = 40;
+  const X = s => pad + s * (w - pad * 2);
+  const yPos = h * 0.32, yNeg = h * 0.68, band = h * 0.16;
+
+  ctx.strokeStyle = cssv('--border'); ctx.fillStyle = cssv('--muted'); ctx.font = '11px sans-serif';
+  ctx.fillText('实际阳性', 8, yPos - band - 6);
+  ctx.fillText('实际阴性', 8, yNeg - band - 6);
+  [0, 0.25, 0.5, 0.75, 1].forEach(t => { ctx.fillText(t.toFixed(2), X(t) - 10, h - 6); });
+  ctx.fillText('模型打出的分数（越高越像阳性）', w / 2 - 70, h - 20);
+
+  const tx = X(thr);
+  ctx.strokeStyle = cssv('--accent'); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(tx, 14); ctx.lineTo(tx, h - 34); ctx.stroke(); ctx.lineWidth = 1;
+
+  const COL = { tp: '#15803d', fn: '#b45309', fp: '#b91c1c', tn: '#1d4ed8' };
+  for (const p of sample) {
+    const predPos = p.score >= thr;
+    const cls = p.pos ? (predPos ? 'tp' : 'fn') : (predPos ? 'fp' : 'tn');
+    const y0 = p.pos ? yPos : yNeg;
+    const y = y0 + (p.jitter - 0.5) * band * 2;
+    ctx.fillStyle = COL[cls];
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath(); ctx.arc(X(p.score), y, 2.1, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function upd() {
+  const { tp, fn, fp, tn } = counts();
+  const prec = tp + fp ? tp / (tp + fp) : 0;
+  const rec = tp + fn ? tp / (tp + fn) : 0;
+  const f1 = prec + rec ? 2 * prec * rec / (prec + rec) : 0;
+  const acc = (tp + tn) / sample.length;
+  if (f1 > bestF1) bestF1 = f1;
+  document.getElementById('mx').innerHTML = `
+    <div></div><div class="hd">预测：阳性</div><div class="hd">预测：阴性</div>
+    <div class="side">实际：阳性</div>
+    <div class="cell tp"><b>${tp}</b><span>TP 抓对</span></div>
+    <div class="cell fn"><b>${fn}</b><span>FN 漏掉</span></div>
+    <div class="side">实际：阴性</div>
+    <div class="cell fp"><b>${fp}</b><span>FP 冤枉</span></div>
+    <div class="cell tn"><b>${tn}</b><span>TN 放行</span></div>`;
+  document.getElementById('mts').innerHTML = `
+    <div class="metric"><div class="k">准确率</div><div class="v">${(acc * 100).toFixed(1)}%</div></div>
+    <div class="metric"><div class="k">精确率</div><div class="v">${(prec * 100).toFixed(1)}%</div></div>
+    <div class="metric"><div class="k">召回率</div><div class="v">${(rec * 100).toFixed(1)}%</div></div>
+    <div class="metric"><div class="k">F1 分数</div><div class="v">${f1.toFixed(3)}</div></div>`;
+  document.getElementById('best').innerHTML = `本场景样本共 <b>${sample.length}</b> 个　·　本次拖动过程中最佳 F1：<b>${bestF1.toFixed(3)}</b>`;
+  document.getElementById('thrv').textContent = thr.toFixed(2);
+}
+function refresh() { draw(); upd(); }
+
+document.getElementById('thr').addEventListener('input', e => { thr = +e.target.value / 100; refresh(); });
+/* 也可以直接在图上拖动那条竖线 */
+let dragging = false;
+cv.addEventListener('pointerdown', e => { dragging = true; setThrFromEvent(e); });
+window.addEventListener('pointermove', e => { if (dragging) setThrFromEvent(e); });
+window.addEventListener('pointerup', () => dragging = false);
+function setThrFromEvent(e) {
+  const r = cv.getBoundingClientRect();
+  const pad = 40;
+  const t = clamp((e.clientX - r.left - pad) / (r.width - pad * 2), 0, 1);
+  thr = t;
+  document.getElementById('thr').value = Math.round(t * 100);
+  refresh();
+}
+
+const scenesEl = document.getElementById('scenes');
+SCENES.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.textContent = s.name;
+  if (i === 0) b.classList.add('on');
+  b.addEventListener('click', () => {
+    scenesEl.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    scene = s; sample = makeSample(s); bestF1 = 0;
+    document.getElementById('sceneDesc').innerHTML = `<b style="color:var(--text)">${s.name}</b>：${s.desc}`;
+    refresh();
+  });
+  scenesEl.append(b);
+});
+document.getElementById('sceneDesc').innerHTML = `<b style="color:var(--text)">${SCENES[0].name}</b>：${SCENES[0].desc}`;
+refresh();
+</script>
+</body></html>

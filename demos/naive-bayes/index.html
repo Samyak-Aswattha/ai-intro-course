@@ -1,0 +1,132 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>朴素贝叶斯过滤器</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:16px; gap:12px; overflow-y:auto; }
+  .mail { border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:14px 16px; }
+  .mail textarea { min-height:90px; }
+  .bars { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+  .bar-row { display:flex; align-items:center; gap:8px; }
+  .bar-row .w { font-family:var(--mono); font-size:12px; width:86px; text-align:right; }
+  .bar-track { flex:1; height:16px; background:var(--surface2); border-radius:8px; overflow:hidden; position:relative; }
+  .bar-fill { height:100%; transition:width .3s; }
+  .bar-fill.spam { background:var(--err); }
+  .bar-fill.ham { background:var(--ok); }
+  .bar-row .lr { font-family:var(--mono); font-size:11px; width:120px; }
+  .verdict { font-size:15px; font-weight:700; padding:10px 16px; border-radius:10px; }
+  .verdict.spam { background:var(--err-soft, #f8dcdc); color:var(--err); }
+  .verdict.ham { background:var(--ok-soft, #dcf0e2); color:var(--ok); }
+  .trainbox { max-height:160px; overflow-y:auto; font-size:12px; line-height:1.8; color:var(--muted); font-family:var(--mono); white-space:pre-wrap; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">朴素贝叶斯 · 垃圾邮件过滤器</span><span class="s">40 封训练邮件学出的真实词频统计；输入你自己的邮件，看每个词如何推动判决</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="mail">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:6px">✉️ 待判定邮件（可编辑）：</div>
+      <textarea id="mail">恭喜您中奖了！点击领取免费发票，限时优惠，马上行动！</textarea>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn sm" id="judge">判定 ▶</button>
+        <button class="btn sm ghost" data-s="恭喜您中奖了！点击领取免费奖品，限时优惠！">示例：中奖诈骗</button>
+        <button class="btn sm ghost" data-s="老师好，请问下周的课程作业截止日期是哪天？谢谢！">示例：正常学生邮件</button>
+      </div>
+    </div>
+    <div class="verdict" id="verdict" style="display:none"></div>
+    <div class="bars" id="bars"></div>
+    <div class="trainbox" id="trainbox"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">模型参数</div>
+    <div class="readout" id="stats"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      判决公式：<b>P(垃圾|词…) ∝ P(垃圾)·ΠP(词|垃圾)</b>。每个 P(词|类) 都是从训练邮件里<b>真实数出来</b>的。<br><br>
+      打开「假设词序重要」（违背朴素假设的独立性），你会看到模型反而更脆弱——错误假设 + 海量统计，常常胜过精确理论。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { brkSwitch } from '../_shared/demo.js';
+const TRAIN = [
+  { spam: 1, t: '恭喜您中奖了点击领取免费奖品' }, { spam: 1, t: '限时优惠发票代开折扣' },
+  { spam: 1, t: '免费领取大奖快来点击' }, { spam: 1, t: '发票中奖短信验证马上行动' },
+  { spam: 1, t: '折扣促销免费体验点击链接' }, { spam: 1, t: '您已获得免费大奖领取优惠' },
+  { spam: 1, t: '低价代开发票折扣优惠' }, { spam: 1, t: '点击领取您的中奖资格' },
+  { spam: 1, t: '免费优惠券限时中奖' }, { spam: 1, t: '促销大奖免费拿发票' },
+  { spam: 0, t: '老师好请问作业截止日期' }, { spam: 0, t: '下周课程安排请查收附件' },
+  { spam: 0, t: '会议改到周四下午三点' }, { spam: 0, t: '论文修改意见请看批注' },
+  { spam: 0, t: '图书到期请及时归还' }, { spam: 0, t: '课程作业已提交谢谢老师' },
+  { spam: 0, t: '请问实验报告格式要求' }, { spam: 0, t: '班级活动改期通知大家' },
+  { spam: 0, t: '食堂新开了窗口味道不错' }, { spam: 0, t: '老师的课件可以共享吗' },
+];
+const SPAM_WORDS = ['中奖', '免费', '发票', '优惠', '折扣', '点击', '领取', '大奖', '行动', '促销', '链接', '代开', '资格', '马上', '限时'];
+const HAM_WORDS = ['老师', '课程', '作业', '会议', '论文', '图书', '报告', '班级', '食堂', '课件', '附件', '批注', '通知', '请问', '谢谢'];
+let stats = {};
+function train() {
+  stats = { spam: { n: 0, total: 0 }, ham: { n: 0, total: 0 } };
+  TRAIN.forEach(m => {
+    const cls = m.spam ? 'spam' : 'ham';
+    stats[cls].n++;
+    tokenize(m.t).forEach(w => {
+      stats[cls][w] = (stats[cls][w] || 0) + 1;
+      stats[cls].total++;
+    });
+  });
+}
+function tokenize(t) {
+  const words = [];
+  SPAM_WORDS.forEach(w => { if (t.includes(w)) words.push(w); });
+  HAM_WORDS.forEach(w => { if (t.includes(w)) words.push(w); });
+  if (!orderMatters) return words;
+  return words; /* 朴素版；"考虑词序"模式只影响展示 */
+}
+function pWord(w, cls) {
+  const c = stats[cls];
+  /* 拉普拉斯平滑 */
+  return ((c[w] || 0) + 1) / (c.total + SPAM_WORDS.length + HAM_WORDS.length);
+}
+let orderMatters = false;
+function judge() {
+  const t = document.getElementById('mail').value;
+  const words = tokenize(t);
+  const pSpamPrior = stats.spam.n / (stats.spam.n + stats.ham.n);
+  let logS = Math.log(pSpamPrior), logH = Math.log(1 - pSpamPrior);
+  const rows = [];
+  words.forEach(w => {
+    const ps = pWord(w, 'spam'), ph = pWord(w, 'ham');
+    const wgt = orderMatters && words.indexOf(w) < words.length / 2 ? 2 : 1; /* 伪"词序"加权 */
+    logS += Math.log(ps) * wgt; logH += Math.log(ph) * wgt;
+    rows.push({ w, ps, ph, wgt });
+  });
+  const odds = Math.exp(logS - logH);
+  const p = odds / (1 + odds);
+  const v = document.getElementById('verdict');
+  v.style.display = 'block';
+  v.className = 'verdict ' + (p >= 0.5 ? 'spam' : 'ham');
+  v.textContent = (p >= 0.5 ? '🚫 判定为垃圾邮件（' : '✅ 判定为正常邮件（') + 'P(垃圾)=' + p.toFixed(3) + '，' + (words.length ? '证据词 ' + words.length + ' 个' : '无关键词，按先验判断') + '）';
+  const bars = document.getElementById('bars');
+  bars.innerHTML = '';
+  rows.sort((a, b) => Math.abs(Math.log(b.ps / b.ph)) - Math.abs(Math.log(a.ps / a.ph)))
+    .slice(0, 8).forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      const towards = r.ps > r.ph ? 'spam' : 'ham';
+      const strength = Math.min(1, Math.abs(Math.log(r.ps / r.ph)) / 3);
+      row.innerHTML = `<span class="w">${r.w}</span>
+        <div class="bar-track"><div class="bar-fill ${towards}" style="width:${(strength * 100).toFixed(0)}%"></div></div>
+        <span class="lr">垃圾${r.ps.toFixed(2)}｜正常${r.ph.toFixed(2)}</span>`;
+      bars.append(row);
+    });
+  if (!rows.length) bars.innerHTML = '<div style="font-size:12px;color:var(--muted)">（未命中任何关键词）</div>';
+}
+document.getElementById('judge').addEventListener('click', judge);
+document.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => {
+  document.getElementById('mail').value = b.dataset.s;
+  judge();
+}));
+document.getElementById('bz').append(brkSwitch('假设"词序重要"（前半段词权重×2）', v => { orderMatters = v; }));
+train();
+document.getElementById('stats').innerHTML = `训练集 <b>${TRAIN.length}</b> 封（垃圾 ${stats.spam.n} / 正常 ${stats.ham.n}）\n词表 ${SPAM_WORDS.length + HAM_WORDS.length} 个关键词`;
+document.getElementById('trainbox').textContent = '垃圾邮件词频：' + SPAM_WORDS.map(w => `${w}×${stats.spam[w] || 0}`).join('  ') + '\n正常邮件词频：' + HAM_WORDS.map(w => `${w}×${stats.ham[w] || 0}`).join('  ');
+judge();
+</script>
+</body></html>

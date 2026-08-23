@@ -1,0 +1,134 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>LSTM 门控剧场</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:14px; gap:10px; overflow-y:auto; }
+  .script { display:flex; gap:6px; flex-wrap:wrap; }
+  .w { padding:6px 12px; border:1.5px solid var(--border); border-radius:8px; background:var(--surface); font-size:14px; }
+  .w.cur { border-color:var(--accent); background:var(--accent-soft); font-weight:700; }
+  .cell { flex:1; min-height:220px; border:1.5px solid var(--c3); border-radius:14px; background:var(--surface); padding:14px 18px; position:relative; display:flex; flex-direction:column; gap:10px; }
+  .cell .ttl { font-size:12px; color:var(--c3); font-weight:700; letter-spacing:.1em; }
+  .gateline { display:flex; align-items:center; gap:10px; }
+  .gateline .gname { width:70px; font-size:12.5px; font-weight:700; }
+  .gtrack { flex:1; height:20px; background:var(--surface2); border-radius:10px; overflow:hidden; position:relative; }
+  .gfill { height:100%; border-radius:10px; transition:width .4s cubic-bezier(.3,.8,.3,1); }
+  .gfill.f { background:var(--err); } .gfill.i { background:var(--c3); } .gfill.o { background:var(--ok); }
+  .gval { width:48px; text-align:right; font-family:var(--mono); font-size:12.5px; }
+  .cbar { display:flex; align-items:center; gap:10px; margin-top:4px; }
+  .cbar .cname { width:70px; font-size:12px; color:var(--muted); }
+  .ctrack { flex:1; height:12px; background:var(--surface2); border-radius:6px; position:relative; }
+  .cmem { height:100%; background:linear-gradient(90deg,#b45309,#e0a030); border-radius:6px; transition:width .4s; display:flex; }
+  .cmem .old { background:#946b2d; height:100%; }
+  .cmem .new { background:#e0a030; height:100%; }
+  .outline { font-size:13px; line-height:1.8; min-height:3em; color:var(--text-2, var(--text)); }
+  .outline b { color:var(--accent); }
+</style></head><body>
+<div class="demo-head"><span class="badge">动画剧场</span><span class="t">LSTM 三道门 · 记忆管理学</span><span class="s">逐词推进，看遗忘门清理旧记忆、输入门写入关键信息、输出门决定说出多少</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="script" id="script"></div>
+    <div class="cell">
+      <div class="ttl">LSTM 细胞 @ t = —</div>
+      <div class="gateline"><span class="gname">🧹 遗忘门</span><div class="gtrack"><div class="gfill f" id="gf" style="width:0%"></div></div><span class="gval" id="vf">—</span></div>
+      <div class="gateline"><span class="gname">✍️ 输入门</span><div class="gtrack"><div class="gfill i" id="gi" style="width:0%"></div></div><span class="gval" id="vi">—</span></div>
+      <div class="gateline"><span class="gname">🗣️ 输出门</span><div class="gtrack"><div class="gfill o" id="go" style="width:0%"></div></div><span class="gval" id="vo">—</span></div>
+      <div class="cbar"><span class="cname">📦 细胞记忆</span><div class="ctrack"><div class="cmem" id="cm" style="width:0%"><div class="old" id="cold" style="width:0%"></div><div class="new" id="cnew" style="width:0%"></div></div></div><span class="gval" id="vc">—</span></div>
+      <div class="outline" id="oline">按「播放」或点击句子中的词，观看记忆被管理的过程。</div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">播放</div>
+    <div class="btn-row">
+      <button class="btn sm" id="play">播放 ▶</button>
+      <button class="btn sm ghost" id="next">下一词 ⏭</button>
+      <button class="btn sm ghost" id="reset">重置</button>
+    </div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 对比实验</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      句子：「<b>猫</b>坐在垫子上，它<b>不饿</b>，因为<b>晚饭</b>吃了很多」。<br><br>
+      "不饿"和"晚饭"出现时，输入门应当开大——关键信息写入；遇到语气词时遗忘门开大——清理冗余。<br><br>
+      打开「遗忘门失灵」：旧记忆永不清理、无限堆积——网络输出开始"什么都想说"。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { brkSwitch } from '../_shared/demo.js';
+const SENT = ['猫', '坐在', '垫子上', '，', '它', '不饿', '，', '因为', '晚饭', '吃了', '很多'];
+/* 每词的门控剧本：(遗忘, 输入, 输出, 新信息量, 旁白) */
+const SCRIPT = {
+  '猫':       { f: .15, i: .95, o: .30, nv: .55, line: '句首主语：<b>输入门大开</b>，把"猫"写进长期记忆。' },
+  '坐在':     { f: .10, i: .55, o: .60, nv: .30, line: '动作信息流入，但输出门只放出一部分——先别急着说。' },
+  '垫子上':   { f: .25, i: .50, o: .40, nv: .25, line: '地点信息写入。记忆开始分层堆积。' },
+  '，':       { f: .85, i: .05, o: .15, nv: .02, line: '标点：<b>遗忘门大开</b>——无关细节清理，给重点腾地方。' },
+  '它':       { f: .10, i: .20, o: .85, nv: .05, line: '代词出现：<b>输出门大开</b>，把记忆里的"猫"读出来说——"它"="猫"。' },
+  '不饿':     { f: .20, i: .90, o: .70, nv: .60, line: '关键状态：<b>输入门全开</b>，"不饿"高优先级写入。' },
+  '，':       { f: .80, i: .05, o: .10, nv: .02, line: '又见标点，再清理一次。' },
+  '因为':     { f: .15, i: .10, o: .30, nv: .05, line: '逻辑连接词：输出门半开——准备引出原因。' },
+  '晚饭':     { f: .10, i: .92, o: .75, nv: .55, line: '因果链核心："晚饭"写入，与"不饿"建立关联。' },
+  '吃了':     { f: .12, i: .40, o: .80, nv: .20, line: '动作补全，输出门配合——句意基本完整了。' },
+  '很多':     { f: .08, i: .45, o: .90, nv: .15, line: '程度收尾。此时细胞里的记忆足以回答："它为什么不饿？"' },
+};
+let t = -1, C = 0, broken = false;
+const scriptEl = document.getElementById('script');
+SENT.forEach((w, i) => {
+  const d = document.createElement('div');
+  d.className = 'w';
+  d.textContent = w;
+  d.addEventListener('click', () => stepTo(i));
+  scriptEl.append(d);
+});
+function stepTo(i) {
+  if (i <= t) { C = 0; t = -1; }  /* 回退则重算 */
+  while (t < i) doStep();
+  render(i);
+}
+function doStep() {
+  t++;
+  const s = SCRIPT[SENT[t]] || { f: .2, i: .2, o: .2, nv: .1 };
+  const f = broken ? 0.02 : s.f;
+  C = C * f + s.i * s.nv;
+}
+function render(i) {
+  const s = SCRIPT[SENT[i]];
+  const f = broken ? 0.02 : s.f;
+  document.querySelector('.ttl').textContent = `LSTM 细胞 @ t = ${i + 1}（读到「${SENT[i]}」）`;
+  document.getElementById('gf').style.width = (f * 100) + '%';
+  document.getElementById('gi').style.width = (s.i * 100) + '%';
+  document.getElementById('go').style.width = (s.o * 100) + '%';
+  document.getElementById('vf').textContent = f.toFixed(2);
+  document.getElementById('vi').textContent = s.i.toFixed(2);
+  document.getElementById('vo').textContent = s.o.toFixed(2);
+  const oldC = C * f / (C + 1e-9), newC = s.i * s.nv / (C + 1e-9);
+  const total = Math.min(1, C);
+  document.getElementById('cm').style.width = (total * 100) + '%';
+  document.getElementById('cold').style.width = (oldC * 100) + '%';
+  document.getElementById('cnew').style.width = (newC * 100) + '%';
+  document.getElementById('vc').textContent = C.toFixed(2);
+  document.getElementById('oline').innerHTML = s.line + (broken ? '<br><b style="color:var(--err)">⚠ 遗忘门失灵：记忆只增不减，正在变成垃圾场。</b>' : '');
+  document.querySelectorAll('.w').forEach((w, k) => w.classList.toggle('cur', k === i));
+}
+document.getElementById('next').addEventListener('click', () => { if (t < SENT.length - 1) { doStep(); render(t); } });
+document.getElementById('reset').addEventListener('click', () => { t = -1; C = 0; render0(); });
+function render0() {
+  document.querySelector('.ttl').textContent = 'LSTM 细胞 @ t = —';
+  ['gf', 'gi', 'go'].forEach(id => document.getElementById(id).style.width = '0%');
+  ['vf', 'vi', 'vo', 'vc'].forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('cm').style.width = '0%';
+  document.getElementById('oline').textContent = '按「播放」或点击句子中的词。';
+  document.querySelectorAll('.w').forEach(w => w.classList.remove('cur'));
+}
+let playing = false, pt = null;
+document.getElementById('play').addEventListener('click', e => {
+  playing = !playing;
+  e.target.textContent = playing ? '暂停 ■' : '播放 ▶';
+  if (playing) {
+    if (t >= SENT.length - 1) { t = -1; C = 0; }
+    pt = setInterval(() => {
+      if (t >= SENT.length - 1) { clearInterval(pt); playing = false; e.target.textContent = '播放 ▶'; return; }
+      doStep(); render(t);
+    }, 1100);
+  } else clearInterval(pt);
+});
+document.getElementById('bz').append(brkSwitch('遗忘门失灵（永不清理）', v => { broken = v; }));
+</script>
+</body></html>

@@ -1,0 +1,119 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>机器学习流水线</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:16px; gap:14px; overflow-y:auto; }
+  .pipe { display:flex; align-items:stretch; gap:8px; flex-wrap:wrap; }
+  .pnode { flex:1; min-width:120px; border:1.5px solid var(--border); border-radius:12px; padding:12px; background:var(--surface); position:relative; transition:all .3s; }
+  .pnode.active { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  .pnode .k { font-size:11px; color:var(--muted); letter-spacing:.08em; }
+  .pnode .n { font-weight:700; font-size:14px; margin:3px 0 6px; }
+  .pnode .v { font-family:var(--mono); font-size:11.5px; color:var(--c2); line-height:1.6; }
+  .arrow { align-self:center; color:var(--muted); font-size:18px; }
+  .dotmap { display:flex; gap:2px; flex-wrap:wrap; padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface2); }
+  .dot { width:14px; height:14px; border-radius:4px; }
+  .legend2 { font-size:12px; color:var(--muted); }
+</style></head><body>
+<div class="demo-head"><span class="badge">互动</span><span class="t">机器学习流水线</span><span class="s">数据 → 切分 → 训练 → 评估 → 部署：拖动滑杆看每个环节怎么变</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="pipe">
+      <div class="pnode" id="pn0"><div class="k">① 数据</div><div class="n">📏 收集</div><div class="v" id="v0"></div></div>
+      <span class="arrow">→</span>
+      <div class="pnode" id="pn1"><div class="k">② 切分</div><div class="n">✂️ 训练/测试</div><div class="v" id="v1"></div></div>
+      <span class="arrow">→</span>
+      <div class="pnode" id="pn2"><div class="k">③ 训练</div><div class="n">🏋️ 学参数</div><div class="v" id="v2"></div></div>
+      <span class="arrow">→</span>
+      <div class="pnode" id="pn3"><div class="k">④ 评估</div><div class="n">📊 测试集</div><div class="v" id="v3"></div></div>
+      <span class="arrow">→</span>
+      <div class="pnode" id="pn4"><div class="k">⑤ 部署</div><div class="n">🚀 预测新数据</div><div class="v" id="v4"></div></div>
+    </div>
+    <div class="dotmap" id="dots"></div>
+    <div class="legend2"><i style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#0f766e;margin-right:4px"></i>类别 A（训练）　<i style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#b4482b;margin-right:4px"></i>类别 B（训练）　描边 = 测试集</div>
+    <div class="readout" id="ro"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">控制台</div>
+    <div id="ctls"></div>
+    <div class="btn-row"><button class="btn sm" id="train">训练 ▶</button><button class="btn sm ghost" id="newdata">换一批数据</button></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 经典错误示范</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      核心纪律：<b>训练集 ≠ 考试</b>。打开「测试集泄漏」把一部分测试数据混进训练——看训练分飙升、真实成绩不变：这就是靠"背题"拿高分的机器学习版。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { slider, brkSwitch, RNG, gauss } from '../_shared/demo.js';
+let data = [], model = null, leak = false;
+function genData(nA, nB, noise) {
+  const rng = RNG(Math.floor(Math.random() * 99999));
+  const pts = [];
+  for (let i = 0; i < nA; i++) pts.push({ x: gauss(rng, 0.35, noise), y: gauss(rng, 0.35, noise), c: 0 });
+  for (let i = 0; i < nB; i++) pts.push({ x: gauss(rng, 0.65, noise), y: gauss(rng, 0.65, noise), c: 1 });
+  return pts.map(p => ({ ...p, test: Math.random() < 0.3 }));
+}
+/* 极简逻辑回归（真实梯度下降） */
+function trainLR(pts) {
+  let w1 = 0, w2 = 0, b = 0;
+  const lr = 0.8;
+  for (let ep = 0; ep < 60; ep++) {
+    for (const p of pts) {
+      const z = w1 * p.x + w2 * p.y + b;
+      const pr = 1 / (1 + Math.exp(-z));
+      const d = p.c - pr;
+      w1 += lr * d * p.x; w2 += lr * d * p.y; b += lr * d * 0.5;
+    }
+  }
+  return { w1, w2, b };
+}
+function acc(model, pts) {
+  let ok = 0;
+  for (const p of pts) {
+    const pr = model.w1 * p.x + model.w2 * p.y + model.b >= 0 ? 1 : 0;
+    if (pr === p.c) ok++;
+  }
+  return ok / Math.max(1, pts.length);
+}
+const dots = document.getElementById('dots');
+let nA = 40, nB = 40, noise = 0.12;
+function render() {
+  dots.innerHTML = '';
+  data.forEach(p => {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    d.style.background = p.c ? '#b4482b' : '#0f766e';
+    if (p.test) d.style.boxShadow = '0 0 0 2px var(--bg), 0 0 0 3.5px #4338ca';
+    dots.append(d);
+  });
+  document.getElementById('v0').textContent = `${data.length} 个样本\n2 维特征\n2 个类别`;
+  document.getElementById('v1').textContent = `训练 ${data.filter(p => !p.test || (leak && Math.random() < 0.5)).length}\n测试 ${data.filter(p => p.test).length}`;
+  document.getElementById('v2').textContent = model ? `w1=${model.w1.toFixed(2)}\nw2=${model.w2.toFixed(2)}\nb=${model.b.toFixed(2)}` : '未训练';
+  document.getElementById('v3').textContent = model ? `训练准确率 ${(acc(model, data.filter(p => !p.test)) * 100).toFixed(0)}%\n测试准确率 ${(acc(model, data.filter(p => p.test)) * 100).toFixed(0)}%` : '—';
+  document.getElementById('v4').textContent = '新点 (0.5, 0.5) → ' + (model ? (model.w1 * 0.5 + model.w2 * 0.5 + model.b >= 0 ? 'B' : 'A') : '—');
+}
+document.getElementById('train').addEventListener('click', () => {
+  const trainSet = leak ? [...data.filter(p => !p.test), ...data.filter(p => p.test).slice(0, 10)] : data.filter(p => !p.test);
+  model = trainLR(trainSet);
+  [0, 1, 2, 3, 4].forEach(i => {
+    document.getElementById('pn' + i).classList.remove('active');
+    setTimeout(() => document.getElementById('pn' + i).classList.add('active'), i * 260);
+  });
+  setTimeout(() => {
+    render();
+    const tr = acc(model, data.filter(p => !p.test)), te = acc(model, data.filter(p => p.test));
+    document.getElementById('ro').innerHTML = `训练准确率 <b>${(tr * 100).toFixed(1)}%</b>　测试准确率 <b>${(te * 100).toFixed(1)}%</b>${leak ? '\n⚠ 泄漏生效：模型"见过"部分考题' : ''}`;
+  }, 1400);
+  render();
+});
+document.getElementById('newdata').addEventListener('click', () => { data = genData(nA, nB, noise); model = null; render(); document.getElementById('ro').textContent = '新数据已生成，按「训练」'; });
+const ctls = document.getElementById('ctls');
+const s1 = slider({ label: '类别 A 样本数', min: 10, max: 100, value: nA, onInput: v => { nA = v; data = genData(nA, nB, noise); model = null; render(); } });
+const s2 = slider({ label: '类别 B 样本数', min: 10, max: 100, value: nB, onInput: v => { nB = v; data = genData(nA, nB, noise); model = null; render(); } });
+const s3 = slider({ label: '噪声（难度）', min: 2, max: 30, value: 12, fmt: v => (v / 100).toFixed(2), onInput: v => { noise = v / 100; data = genData(nA, nB, noise); model = null; render(); } });
+ctls.append(s1, s2, s3);
+document.getElementById('bz').append(brkSwitch('测试集泄漏（把考题塞进练习册）', v => { leak = v; }));
+data = genData(nA, nB, noise);
+render();
+document.getElementById('ro').textContent = '按「训练」看数据如何变成模型';
+</script>
+</body></html>

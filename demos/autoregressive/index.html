@@ -1,0 +1,152 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>自回归生成机</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:16px; gap:14px; overflow-y:auto; }
+  .genbox { min-height:110px; padding:16px 20px; border:1.5px solid var(--border); border-radius:14px; background:var(--surface); font-family:var(--font-display, serif); font-size:19px; line-height:2; }
+  .genbox .ctx { color:var(--muted); }
+  .genbox .newtok { background:var(--accent-soft); color:var(--accent); font-weight:700; border-radius:5px; padding:0 5px; animation:pop .3s; }
+  @keyframes pop { from { transform:scale(.7); opacity:0; } }
+  .dist { flex:1; min-height:150px; border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:12px; overflow-y:auto; }
+  .drow { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+  .drow .w { width:88px; text-align:right; font-size:13.5px; }
+  .drow .track { flex:1; height:22px; background:var(--surface2); border-radius:6px; overflow:hidden; }
+  .drow .fill { height:100%; background:linear-gradient(90deg, var(--c3), #8b95f8); border-radius:6px; transition:width .25s; display:flex; align-items:center; justify-content:flex-end; padding-right:8px; color:#fff; font-family:var(--mono); font-size:11px; }
+  .drow.top .fill { background:linear-gradient(90deg, var(--accent), #e08a6f); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">自回归生成 · 下一个词预测</span><span class="s">真实 n-gram 语言模型逐词生成：每步展示概率分布；调温度感受从复读机到诗人的光谱</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="genbox" id="gen"><span class="ctx">春天来了，</span><span style="color:var(--muted)">▁按「生成」</span></div>
+    <div class="dist" id="dist"><div style="font-size:12.5px;color:var(--muted)">候选词概率分布将显示在这里</div></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">生成</div>
+    <div class="btn-row">
+      <button class="btn sm" id="gen1">生成 ▶</button>
+      <button class="btn sm ghost" id="step">生成一个词</button>
+      <button class="btn sm ghost" id="reset">清空重来</button>
+    </div>
+    <div id="ctls"></div>
+    <div class="tabs" id="seeds"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 采样策略对比</div></div>
+    <div class="readout" id="ro"></div>
+  </div>
+</div>
+<script type="module">
+import { slider, brkSwitch } from '../_shared/demo.js';
+/* 三元组语言模型（手工语料统计的教学近似版） */
+const CORPUS = {
+  '春天来了，': { '万物': 3, '花': 3, '大地': 2, '校园': 1, '我': 2 },
+  '万物': { '复苏': 4, '生长': 2, '开始': 2, '都': 1 },
+  '复苏': { '，': 4, '的': 1, '了': 2 },
+  '，': { '小草': 2, '春风': 3, '人们': 2, '阳光': 2, '鸟儿': 2 },
+  '花': { '开了': 4, '香': 2, '与': 1, '在': 1 },
+  '小草': { '发芽': 4, '从': 2, '绿了': 2 },
+  '春风': { '拂面': 4, '吹过': 3, '又绿': 2 },
+  '发芽': { '了': 3, '，': 3 },
+  '了': { '，': 4, '。': 3, '的': 1 },
+  '吹过': { '大地': 3, '湖面': 3, '，': 1 },
+  '大地': { '。': 3, '苏醒': 3, '上': 1 },
+  '苏醒': { '了': 3, '。': 3 },
+  '。': { '春天': 3, '人们': 2, '一切': 2 },
+  '拂面': { '，': 3, '而来': 3 },
+  '湖面': { '泛起': 4, '结冰': 1 },
+  '泛起': { '涟漪': 5 },
+  '涟漪': { '。': 5 },
+  '开来': { '。': 4, '，': 2 },
+  '生长': { '。': 4, '，': 2 },
+  '开始': { '生长': 2, '苏醒': 2, '了': 3 },
+  '阳光': { '洒满': 4, '温暖': 2 },
+  '洒满': { '大地': 5 },
+  '鸟儿': { '歌唱': 4, '飞回': 2 },
+  '歌唱': { '。': 4 },
+  '我': { '想起': 2, '看见': 2, '的': 2 },
+  '校园': { '里': 3, '的': 3 },
+  '里': { '的': 3, '，': 2 },
+  '的': { '春天': 2, '诗句': 2, '一切': 2 },
+  '想起': { '诗句': 2, '。': 2 },
+  '诗句': { '：': 4, '。': 2 },
+  '：': { '春眠不觉晓': 5 },
+};
+const SEEDS = ['春天来了，', '万物', '春风', '鸟儿'];
+let temp = 0.8, greedy = false, banned = false, tokens = ['春天来了，'];
+function nextDist(ctx) {
+  const key = ctx[ctx.length - 1];
+  let dist = CORPUS[key] || null;
+  if (!dist && ctx.length >= 2) dist = CORPUS[ctx.slice(-2).join('')];
+  if (!dist) return { '。': 1 };
+  return dist;
+}
+function sample(dist) {
+  /* 温度重塑 + 采样 */
+  const words = Object.keys(dist);
+  const logits = words.map(w => Math.log((dist[w] + 0.15) / 1));  /* 平滑 */
+  const t = Math.max(0.01, temp);
+  const maxL = Math.max(...logits.map(l => l / t));
+  const es = logits.map(l => Math.exp(l / t - maxL));
+  const sum = es.reduce((a, b) => a + b, 0);
+  const probs = es.map(e => e / sum);
+  let idx = 0;
+  if (greedy) idx = probs.indexOf(Math.max(...probs));
+  else {
+    let r = Math.random(), acc = 0;
+    for (let i = 0; i < probs.length; i++) { acc += probs[i]; if (r <= acc) { idx = i; break; } }
+  }
+  if (banned && words[idx] === '。') { probs[probs.length - 1]; idx = (idx + 1) % words.length; }
+  return { word: words[idx], probs: words.map((w, i) => ({ w, p: probs[i] })).sort((a, b) => b.p - a.p) };
+}
+function renderDist(probs, chosen) {
+  const box = document.getElementById('dist');
+  box.innerHTML = '';
+  probs.slice(0, 7).forEach(p => {
+    const d = document.createElement('div');
+    d.className = 'drow' + (p.w === chosen ? ' top' : '');
+    d.innerHTML = `<span class="w">${p.w}</span><div class="track"><div class="fill" style="width:${Math.max(3, p.p * 100)}%">${(p.p * 100).toFixed(1)}%</div></div>`;
+    box.append(d);
+  });
+}
+function renderGen(newTok) {
+  const box = document.getElementById('gen');
+  box.innerHTML = `<span class="ctx">${tokens.slice(0, -1).join('')}</span>` + (newTok ? `<span class="newtok">${newTok}</span>` : `<span class="ctx">${tokens[tokens.length - 1]}</span>`);
+}
+function stepOnce() {
+  if (tokens[tokens.length - 1] === '。' || tokens.length > 24) { document.getElementById('ro').textContent += '（生成完毕）'; return false; }
+  const dist = nextDist(tokens);
+  const { word, probs } = sample(dist);
+  tokens.push(word);
+  renderDist(probs, word);
+  renderGen(word);
+  document.getElementById('ro').innerHTML = `已生成 <b>${tokens.length - 1}</b> 个词　上一词：<b>${word}</b>\n温度 ${temp.toFixed(1)} ${greedy ? '· 贪心（永远选最大概率）' : '· 概率采样'}`;
+  return true;
+}
+document.getElementById('step').addEventListener('click', stepOnce);
+document.getElementById('gen1').addEventListener('click', async () => {
+  while (tokens[tokens.length - 1] !== '。' && tokens.length <= 24) {
+    if (!stepOnce()) break;
+    await new Promise(r => setTimeout(r, 320));
+  }
+});
+document.getElementById('reset').addEventListener('click', () => {
+  tokens = [document.querySelector('#seeds .on')?.dataset.s || '春天来了，'];
+  renderGen();
+  document.getElementById('dist').innerHTML = '<div style="font-size:12.5px;color:var(--muted)">候选词概率分布将显示在这里</div>';
+});
+const seedsEl = document.getElementById('seeds');
+SEEDS.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.textContent = s; b.dataset.s = s;
+  if (!i) b.classList.add('on');
+  b.addEventListener('click', () => {
+    seedsEl.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    tokens = [s]; renderGen();
+  });
+  seedsEl.append(b);
+});
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '温度 Temperature', min: 1, max: 20, value: 8, fmt: v => (v / 10).toFixed(1), onInput: v => temp = v / 10 }));
+document.getElementById('bz').append(brkSwitch('贪心解码（永远选 top-1）', v => greedy = v));
+renderGen();
+</script>
+</body></html>

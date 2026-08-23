@@ -1,0 +1,295 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>GAN 对抗博弈剧场</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .hud { position:absolute; left:12px; top:12px; width:220px; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+  .scorebar { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:12.5px; }
+  .scorebar .row { display:flex; justify-content:space-between; margin:3px 0; font-family:var(--mono); }
+  .scorebar .row.you b { color:var(--accent); }
+  .duelbar { height:10px; border-radius:5px; background:var(--surface2); overflow:hidden; display:flex; }
+  .duelbar .g { background:var(--c3); height:100%; }
+  .duelbar .d { background:var(--err); height:100%; margin-left:auto; }
+  .banner { position:absolute; left:50%; top:14px; transform:translateX(-50%); font-family:var(--font-display,serif); font-size:14px; background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:6px 18px; box-shadow:0 4px 12px rgba(0,0,0,.1); white-space:nowrap; }
+
+  /* 判断卡片：叠在图表下方，是主交互区 */
+  .judge-wrap { position:absolute; left:0; right:0; bottom:0; display:flex; flex-direction:column; align-items:center; padding:0 16px 18px; pointer-events:none; }
+  .judge-card { pointer-events:auto; background:var(--surface); border:1px solid var(--border); border-radius:16px; box-shadow:0 8px 28px rgba(0,0,0,.14); padding:18px 22px; max-width:460px; width:100%; text-align:center; }
+  .jc-title { font-size:16px; font-weight:700; margin-bottom:8px; }
+  .jc-desc { font-size:13px; color:var(--muted); line-height:1.8; margin-bottom:14px; }
+  .jc-round { font-size:12px; color:var(--muted); margin-bottom:10px; font-family:var(--mono); }
+  .jc-buttons { display:flex; gap:10px; justify-content:center; }
+  .jc-buttons .btn { flex:1; padding:12px 10px; font-size:14px; }
+  .jc-feedback { margin-top:10px; font-size:13px; min-height:20px; font-weight:600; }
+  .jc-feedback.ok { color:var(--ok); }
+  .jc-feedback.err { color:var(--err); }
+  .jc-sub { font-size:11.5px; color:var(--muted); margin-top:4px; font-weight:400; }
+
+  /* 待判断样本：出现在图表数轴上，脉冲吸引注意力 */
+  .sample-dot { position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%; background:var(--text); box-shadow:0 0 0 4px color-mix(in srgb, var(--text) 18%, transparent); z-index:5; }
+  .sample-dot.pulse { animation:pulse 1.1s ease-out infinite; }
+  @keyframes pulse { 0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--text) 40%, transparent);} 100%{ box-shadow:0 0 0 14px transparent;} }
+  .sample-dot.real { background:#dc2626; box-shadow:0 0 0 4px #dc262633; }
+  .sample-dot.fake { background:#4338ca; box-shadow:0 0 0 4px #4338ca33; }
+
+  .milestone { position:absolute; inset:0; background:color-mix(in srgb, var(--bg) 88%, transparent); display:flex; align-items:center; justify-content:center; z-index:20; }
+  .milestone-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:26px 30px; max-width:420px; text-align:center; box-shadow:0 12px 36px rgba(0,0,0,.18); }
+  .milestone-card .mc-big { font-size:32px; font-weight:800; margin:8px 0; font-family:var(--mono); }
+  .milestone-card .mc-title { font-size:15px; font-weight:700; margin-bottom:6px; }
+  .milestone-card .mc-desc { font-size:13px; color:var(--muted); line-height:1.8; margin-bottom:16px; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">GAN 对抗博弈 · 你来当判别器</span><span class="s">一张张笔迹要求你判断真假，G 会同步学习怎么骗过"和你一样"的判别器——看你能撑几轮</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <canvas id="cv" class="stage-canvas"></canvas>
+    <div class="hud">
+      <div class="scorebar">
+        <div class="row you"><span>🙋 你的正确率</span><b id="us">—</b></div>
+        <div class="row"><span>🕵️ AI-D 正确率</span><b id="ds">—</b></div>
+        <div class="row"><span>🎨 G 拟合度</span><b id="gs">—</b></div>
+        <div class="duelbar"><div class="g" id="gb" style="width:20%"></div><div class="d" style="flex:1"></div></div>
+        <div class="row" style="font-size:11px;color:var(--muted)"><span>已判断</span><b id="ep">0</b></div>
+      </div>
+    </div>
+    <div class="banner" id="banner">先看看你能不能骗过自己</div>
+
+    <div class="judge-wrap">
+      <div class="judge-card" id="jcIntro">
+        <div class="jc-title">🕵️ 你现在是判别器 D</div>
+        <div class="jc-desc">接下来会一张张给你看"笔迹"样本——有的来自真实分布（红），有的是生成器 G 伪造的（蓝）。<b>你来判断真假。</b><br>每判一次，G 都会偷偷学习一点怎么骗过"和你一样"的判别器。<br><br>看看你能撑到第几轮被反超。</div>
+        <button class="btn" id="jcStart">开始判断 ▶</button>
+      </div>
+      <div class="judge-card" id="jcJudge" style="display:none">
+        <div class="jc-round">第 <b id="jcRound">1</b> 张笔迹 · 这是……</div>
+        <div class="jc-buttons">
+          <button class="btn" id="jcReal">✅ 真迹</button>
+          <button class="btn ghost" id="jcFake">🎭 G 伪造的</button>
+        </div>
+        <div class="jc-feedback" id="jcFeedback">&nbsp;</div>
+      </div>
+    </div>
+
+    <div class="milestone" id="milestone" style="display:none">
+      <div class="milestone-card">
+        <div class="mc-title" id="mTitle">10 轮小结</div>
+        <div class="mc-big" id="mBig">—</div>
+        <div class="mc-desc" id="mDesc"></div>
+        <button class="btn" id="mContinue">继续判断 ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="demo-panel">
+    <div class="panel-title">战况</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:14px" id="sidePanel">
+      红色曲线 = 真实数据分布（三个"笔迹簇"）；蓝色 = G 伪造的分布；灰色背景深浅 = AI 判别器此刻有多确信"这是假的"。<br><br>健康对局：蓝贴红、大家都降到瞎猜水平（50%）。
+    </div>
+    <div class="panel-title">旁观模式</div>
+    <div class="btn-row">
+      <button class="btn sm ghost" id="autoToggle">🤖 让 AI 替你判断（自动播放）</button>
+      <button class="btn sm ghost" id="reset">重置</button>
+    </div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, brkSwitch, RNG, gauss } from '../_shared/demo.js';
+const cv = document.getElementById('cv');
+let ctx = autoFit(cv, draw);
+const stage = document.querySelector('.stage');
+/* 真实分布：三个高斯簇 */
+const REAL = [[0.22, 0.045], [0.5, 0.06], [0.78, 0.04]];
+/* G 用一组高斯混合参数表示：k 个中心 */
+let G = [[0.5, 0.09]];   /* 初始一个宽包 */
+let Dparams = { w: 1, b: 0 };
+let mode = 'normal', ep = 0, gScore = 0, dScore = 0;
+let userCorrect = 0, userTotal = 0;
+let autoPlay = false, autoTimer = 0;
+let curSample = null; /* { x, isReal } 当前待判断样本 */
+const rng = RNG(7);
+const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+const PX = x => 30 + x * (W() - 60);
+const PY = y => H() - 34 - y * (H() - 80);
+
+function realPdf(x) { return REAL.reduce((a, [m, s]) => a + Math.exp(-((x - m) ** 2) / (2 * s * s)) / (s * 2.51), 0); }
+function gPdf(x) {
+  if (mode === 'collapse') { const [m, s] = G[0]; return Math.exp(-((x - m) ** 2) / (2 * s * s)) / (s * 2.51); }
+  return G.reduce((a, [m, s]) => a + Math.exp(-((x - m) ** 2) / (2 * s * s)) / (s * 2.51) / G.length, 0);
+}
+function dOut(x) { return 1 / (1 + Math.exp(-(Dparams.w * x + Dparams.b * 4))); }
+
+/* 抽一个待判断样本：50% 真、50% G 伪造 */
+function drawSample() {
+  const isReal = rng() < 0.5;
+  let x;
+  if (isReal) { const [m, s] = REAL[Math.floor(rng() * 3)]; x = gauss(rng, m, s); }
+  else { const [m, s] = G[Math.floor(rng() * G.length)]; x = gauss(rng, m, s * (mode === 'collapse' ? 0.5 : 1)); }
+  return { x: Math.max(0.03, Math.min(0.97, x)), isReal };
+}
+
+/* 训练一步（G/D 的数学核心，不受判断模式影响，逻辑不变） */
+function trainStep() {
+  ep++;
+  for (let i = 0; i < 30; i++) {
+    const x = rng();
+    const target = realPdf(x) > gPdf(x) ? 1 : 0;
+    const err = target - dOut(x);
+    Dparams.w += 0.25 * err * x;
+    Dparams.b += 0.06 * err;
+  }
+  G.forEach(g => {
+    const probe = [g[0] - 0.05, g[0], g[0] + 0.05];
+    const scores = probe.map(p => dOut(p));
+    const best = scores.indexOf(Math.max(...scores));
+    g[0] += (probe[best] - g[0]) * 0.4 + (rng() - 0.5) * 0.03;
+    g[0] = Math.max(0.04, Math.min(0.96, g[0]));
+    g[1] = Math.max(0.02, g[1] * (0.97 + rng() * 0.06));
+  });
+  if (mode === 'normal' && ep % 14 === 0 && G.length < 3) G.push([rng(), 0.08]);
+  if (mode === 'collapse' && G.length > 1) G = [G[0]];
+  let dAcc = 0, n = 0, overlap = 0;
+  for (let x = 0.05; x < 1; x += 0.05) {
+    const isReal = realPdf(x) > gPdf(x);
+    dAcc += (dOut(x) > 0.5) === isReal ? 1 : 0;
+    overlap += Math.min(realPdf(x), gPdf(x));
+    n++;
+  }
+  dScore = Math.round(dAcc / n * 100);
+  gScore = Math.round(Math.min(100, overlap / 1.35 * 100));
+  updateHud();
+}
+function updateHud() {
+  document.getElementById('gs').textContent = gScore + '%';
+  document.getElementById('ds').textContent = dScore + '% 判对';
+  document.getElementById('us').textContent = userTotal ? Math.round(userCorrect / userTotal * 100) + '% (' + userCorrect + '/' + userTotal + ')' : '—';
+  document.getElementById('gb').style.width = gScore + '%';
+  document.getElementById('ep').textContent = ep;
+  const banner = document.getElementById('banner');
+  if (mode === 'collapse') banner.textContent = '⚠ 模式崩塌：G 只画一种笔迹，但 D 抓不到它';
+  else if (dScore <= 55 && gScore > 60) banner.textContent = '🎯 接近均衡：假图乱真，D 只能瞎猜';
+  else if (dScore > 80) banner.textContent = 'D 占优：G 的伪造还很拙劣';
+  else banner.textContent = '博弈进行中…';
+}
+
+/* ---------- 判断卡片交互 ---------- */
+let sampleDotEl = null;
+function showNextSample() {
+  curSample = drawSample();
+  document.getElementById('jcRound').textContent = ep + 1;
+  document.getElementById('jcFeedback').innerHTML = '&nbsp;';
+  document.getElementById('jcReal').disabled = false;
+  document.getElementById('jcFake').disabled = false;
+  if (sampleDotEl) sampleDotEl.remove();
+  sampleDotEl = document.createElement('div');
+  sampleDotEl.className = 'sample-dot pulse';
+  stage.appendChild(sampleDotEl);
+  positionSampleDot();
+}
+function positionSampleDot() {
+  if (!sampleDotEl || !curSample) return;
+  sampleDotEl.style.left = PX(curSample.x) + 'px';
+  sampleDotEl.style.top = (PY(0) + 6) + 'px';
+}
+function judge(userSaysReal) {
+  if (!curSample) return;
+  document.getElementById('jcReal').disabled = true;
+  document.getElementById('jcFake').disabled = true;
+  const correct = userSaysReal === curSample.isReal;
+  userTotal++; if (correct) userCorrect++;
+  const fb = document.getElementById('jcFeedback');
+  const aiSaysReal = dOut(curSample.x) <= 0.5; /* dOut 高 = D 认为是假的 */
+  fb.className = 'jc-feedback ' + (correct ? 'ok' : 'err');
+  fb.innerHTML = (correct ? '✓ 判对了！' : '✗ 判错了，') + '这其实是<b>' + (curSample.isReal ? '真迹' : 'G 伪造的') + '</b>。'
+    + '<div class="jc-sub">AI 判别器当时会判' + (aiSaysReal ? '「真」' : '「假」') + (aiSaysReal === curSample.isReal ? '（AI 也对）' : '（AI 也错，你俩同病相怜）') + '</div>';
+  if (sampleDotEl) { sampleDotEl.classList.remove('pulse'); sampleDotEl.classList.add(curSample.isReal ? 'real' : 'fake'); }
+  trainStep();
+  draw();
+  curSample = null;
+  const delay = 900;
+  setTimeout(() => {
+    if (ep > 0 && ep % 10 === 0) { showMilestone(); return; }
+    showNextSample();
+  }, delay);
+}
+function showMilestone() {
+  document.getElementById('milestone').style.display = 'flex';
+  document.getElementById('mTitle').textContent = '第 ' + ep + ' 轮小结';
+  const you = userTotal ? Math.round(userCorrect / userTotal * 100) : 0;
+  document.getElementById('mBig').textContent = you + '%';
+  let verdict;
+  if (you >= dScore + 10) verdict = '你判断得比 AI-D 还准——但 G 还在学，别太得意。';
+  else if (Math.abs(you - dScore) < 10) verdict = '你和 AI-D 水平相当——你们正在被同一个 G 一起教育。';
+  else verdict = 'AI-D（' + dScore + '%）比你准——G 骗过你的方式，AI 也在悄悄学会识破。';
+  document.getElementById('mDesc').innerHTML = '你的正确率 <b>' + you + '%</b>（' + userCorrect + '/' + userTotal + '）， AI-D 正确率 <b>' + dScore + '%</b>。<br><br>' + verdict;
+}
+document.getElementById('mContinue').addEventListener('click', () => {
+  document.getElementById('milestone').style.display = 'none';
+  showNextSample();
+});
+document.getElementById('jcStart').addEventListener('click', () => {
+  document.getElementById('jcIntro').style.display = 'none';
+  document.getElementById('jcJudge').style.display = 'block';
+  showNextSample();
+});
+document.getElementById('jcReal').addEventListener('click', () => judge(true));
+document.getElementById('jcFake').addEventListener('click', () => judge(false));
+
+/* ---------- 旁观模式：AI 自动对战，节流到人眼跟得上的速度 ---------- */
+document.getElementById('autoToggle').addEventListener('click', e => {
+  autoPlay = !autoPlay;
+  e.target.textContent = autoPlay ? '⏸ 暂停自动播放' : '🤖 让 AI 替你判断（自动播放）';
+  document.getElementById('jcIntro').style.display = 'none';
+  document.getElementById('jcJudge').style.display = 'none';
+  if (sampleDotEl) { sampleDotEl.remove(); sampleDotEl = null; }
+  document.getElementById('milestone').style.display = 'none';
+  clearInterval(autoTimer);
+  if (autoPlay) autoTimer = setInterval(() => { trainStep(); draw(); }, 260);
+});
+
+document.getElementById('reset').addEventListener('click', () => {
+  G = [[0.5, 0.09]]; Dparams = { w: 1, b: 0 }; ep = 0; userCorrect = 0; userTotal = 0;
+  autoPlay = false; clearInterval(autoTimer);
+  document.getElementById('autoToggle').textContent = '🤖 让 AI 替你判断（自动播放）';
+  document.getElementById('milestone').style.display = 'none';
+  updateHud(); draw();
+  document.getElementById('jcIntro').style.display = 'block';
+  document.getElementById('jcJudge').style.display = 'none';
+  if (sampleDotEl) { sampleDotEl.remove(); sampleDotEl = null; }
+  document.getElementById('banner').textContent = '重置完毕，重新开始判断';
+});
+document.getElementById('bz').append(brkSwitch('模式崩塌（G 偷懒只画一种）', v => { mode = v ? 'collapse' : 'normal'; }));
+
+function draw() {
+  ctx.clearRect(0, 0, W(), H());
+  const muted = cssv('--muted');
+  /* D 背景 */
+  for (let x = 0; x <= 1; x += 0.01) {
+    const v = dOut(x);
+    ctx.fillStyle = `rgba(220,38,38,${v * 0.1})`;
+    ctx.fillRect(PX(x), 10, (W() - 60) / 100 + 1, H() - 44);
+  }
+  /* 真实分布 */
+  ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let x = 0; x <= 1.001; x += 0.01) { const y = PY(Math.min(1.15, realPdf(x))); x === 0 ? ctx.moveTo(PX(x), y) : ctx.lineTo(PX(x), y); }
+  ctx.stroke();
+  /* G 分布 */
+  ctx.strokeStyle = '#4338ca'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let x = 0; x <= 1.001; x += 0.01) { const y = PY(Math.min(1.15, gPdf(x))); x === 0 ? ctx.moveTo(PX(x), y) : ctx.lineTo(PX(x), y); }
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  /* 图例 */
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = '#dc2626'; ctx.fillText('— 真实笔迹分布', W() - 170, 24);
+  ctx.fillStyle = '#4338ca'; ctx.fillText('— G 伪造的分布', W() - 170, 42);
+  ctx.fillStyle = muted; ctx.fillText('背景红色深浅 = D 的"假!"判断强度', W() - 240, 60);
+  positionSampleDot();
+}
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+window.addEventListener('resize', () => setTimeout(positionSampleDot, 50));
+updateHud();
+draw();
+</script>
+</body></html>

@@ -1,0 +1,117 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>创作比赛评审模拟器</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; gap:12px; padding:14px; overflow-y:auto; }
+  .entry { border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:14px 16px; }
+  .entry .eh { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .entry .eh .ei { font-size:22px; }
+  .entry .eh .et { font-weight:700; }
+  .entry .eh .meta { font-size:11.5px; color:var(--muted); }
+  .entry .ed { font-size:12.5px; color:var(--muted); line-height:1.7; margin-bottom:10px; }
+  .dims { display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; }
+  @media (max-width: 760px) { .dims { grid-template-columns: repeat(2, 1fr); } }
+  .dim { text-align:center; }
+  .dim .dk { font-size:10.5px; color:var(--muted); }
+  .dim input { width:100%; }
+  .dim .dv { font-family:var(--mono); font-size:12px; font-weight:700; }
+  .total2 { display:flex; align-items:center; gap:12px; margin-top:10px; }
+  .total2 .tt { font-size:13px; font-weight:700; }
+  .total2 .tv { font-family:var(--font-display); font-size:26px; font-weight:700; color:var(--accent); }
+  .comment { font-size:12px; color:var(--muted); line-height:1.7; margin-top:6px; padding:8px 12px; background:var(--surface2); border-radius:8px; display:none; }
+  .comment.show { display:block; }
+</style></head><body>
+<div class="demo-head"><span class="badge">互动</span><span class="t">AI 创作比赛 · 评审模拟器</span><span class="s">给 4 件参赛作品打分（五维度加权），看看评分细则如何区分「驾驭 AI」与「一键生成」</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div style="font-size:12.5px;color:var(--muted)">评分维度权重：概念与表达 35% · AI 运用深度 25% · 过程档案 20% · 展示答辩 15% · 合规 5%。每维 1–10 分。</div>
+    <div id="entries"></div>
+    <div class="readout" id="ro">拖动滑杆为每件作品打分…</div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">评审须知</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      评委最常犯的错：<b>被"完成度"打动</b>而忽视过程。一件看起来普通的诗配画，如果档案里记录了 300 次提示词迭代与明确的取舍，价值高于一张惊艳的一键图。
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      本模拟器的四件作品改编自往届真实投稿。打完分点开"评委视角"对照。
+    </div>
+    <div class="btn-row"><button class="btn sm ghost" id="revealAll">对照全部评委视角</button></div>
+  </div>
+</div>
+<script type="module">
+const DIMS = [
+  { k: 'concept', n: '概念表达', w: .35 },
+  { k: 'depth', n: 'AI 运用深度', w: .25 },
+  { k: 'archive', n: '过程档案', w: .20 },
+  { k: 'present', n: '展示答辩', w: .15 },
+  { k: 'compliance', n: '合规', w: .05 },
+];
+const ENTRIES = [
+  {
+    e: '🖼️', t: '《奶奶的方言正在消失》', meta: '个人 · 混合媒介',
+    d: '为方言录制发音词典：AI 语音识别 + 手工校对 800 条 + 交互网页。档案含 3 版方案对比与放弃理由。',
+    suggest: { concept: 8, depth: 8, archive: 9, present: 7, compliance: 10 },
+    judge: '窄而深的典范：一个具体的、可验证的问题（方言消失），AI 是手段而非奇观，过程档案完整——这正是评分细则想要引导的方向。',
+  },
+  {
+    e: '✨', t: '《赛博敦煌·飞天》', meta: '3 人小组 · AI 视频',
+    d: '一键生成的华丽视频，音乐同样一键。档案只有 2 页截图，答辩时对"为什么选这个风格"答不上来。',
+    suggest: { concept: 6, depth: 2, archive: 2, present: 4, compliance: 8 },
+    judge: '典型的"演示惊艳、追问即穿"：完成度高但主体性证据几乎为零。AI 运用深度与档案两维必须压分——否则比赛会退化为"谁的模型好"。',
+  },
+  {
+    e: '🖊️', t: '《与机对坐：十四行诗实验》', meta: '个人 · AI 文学',
+    d: '作者与模型各写 50 首十四行诗，再互相批注修改，最终成诗 12 首。档案含全部对话与"拒绝 AI 建议"的 9 个瞬间。',
+    judge: '概念直击第八章主题（人机共创中的主体性），"拒绝 AI 的 9 个瞬间"是罕见的反思性证据。文学性本身中上，但论证价值极高。',
+    suggest: { concept: 9, depth: 8, archive: 10, present: 8, compliance: 10 },
+  },
+  {
+    e: '🎵', t: '《孤独数列》', meta: '2 人小组 · AI 音乐',
+    d: '用质数序列驱动作曲模型生成变奏曲，配可视化。素材有授权标注，但两位组员说不清生成参数的含义。',
+    suggest: { concept: 7, depth: 5, archive: 6, present: 3, compliance: 9 },
+    judge: '创意跨学科（数学×音乐），合规做得好；但"说不清参数"暴露了驾驭深度不足——答辩维度必须扣分，这正是 15% 答辩权的用途。',
+  },
+];
+const box = document.getElementById('entries');
+ENTRIES.forEach((en, i) => {
+  const d = document.createElement('div');
+  d.className = 'entry';
+  d.innerHTML = `
+    <div class="eh"><span class="ei">${en.e}</span><span class="et">${en.t}</span><span class="meta">${en.meta}</span>
+      <span style="flex:1"></span><span class="tv" id="tv${i}" style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--accent)">—</span></div>
+    <div class="ed">${en.d}</div>
+    <div class="dims">${DIMS.map(dm => `
+      <div class="dim"><div class="dk">${dm.n} <span style="opacity:.6">${Math.round(dm.w * 100)}%</span></div>
+        <input type="range" min="1" max="10" value="5" data-e="${i}" data-k="${dm.k}">
+        <div class="dv" id="dv${i}${dm.k}">5</div></div>`).join('')}</div>
+    <div class="comment" id="cm${i}">👩‍⚖️ <b>评委视角</b>：${en.judge}</div>`;
+  box.append(d);
+});
+box.addEventListener('input', e => {
+  const el = e.target;
+  if (el.type !== 'range') return;
+  const i = +el.dataset.e, k = el.dataset.k;
+  document.getElementById(`dv${i}${k}`).textContent = el.value;
+  const total = DIMS.reduce((a, dm) => a + dm.w * (+box.querySelector(`[data-e="${i}"][data-k="${dm.k}"]`).value), 0);
+  document.getElementById(`tv${i}`).textContent = (total * 10).toFixed(1);
+  const totals = ENTRIES.map((_, j) => {
+    const t = DIMS.reduce((a, dm) => a + dm.w * (+box.querySelector(`[data-e="${j}"][data-k="${dm.k}"]`).value), 0);
+    return [j, t];
+  }).sort((a, b) => b[1] - a[1]);
+  document.getElementById('ro').innerHTML = `当前排名：<b>${totals.map(([j, t]) => `${ENTRIES[j].e} ${(t * 10).toFixed(0)}分`).join(' ＞ ')}</b>`;
+});
+document.getElementById('revealAll').addEventListener('click', () => {
+  ENTRIES.forEach((en, i) => {
+    document.getElementById(`cm${i}`).classList.add('show');
+    DIMS.forEach(dm => {
+      box.querySelector(`[data-e="${i}"][data-k="${dm.k}"]`).value = en.suggest[dm.k];
+      document.getElementById(`dv${i}${dm.k}`).textContent = en.suggest[dm.k];
+    });
+    const total = DIMS.reduce((a, dm) => a + dm.w * en.suggest[dm.k], 0);
+    document.getElementById(`tv${i}`).textContent = (total * 10).toFixed(1);
+  });
+  document.getElementById('ro').innerHTML = '已按<b>评委视角</b>校准。注意：《赛博敦煌》在"深度/档案/答辩"三维塌方——这正是比赛防止"一键生成"取胜的机制。';
+});
+</script>
+</body></html>

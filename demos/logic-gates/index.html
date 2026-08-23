@@ -1,0 +1,150 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>逻辑门与加法器</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; align-items:center; justify-content:center; padding:14px; overflow:auto; }
+  svg { max-width:100%; height:auto; }
+  .wire { stroke:var(--border2); stroke-width:3; fill:none; transition:stroke .12s; }
+  .wire.on { stroke:var(--accent); }
+  .gate rect { fill:var(--surface); stroke:var(--c3); stroke-width:2; rx:8; transition:all .15s; }
+  .gate text { fill:var(--text); font-size:13px; font-weight:700; }
+  .gate.lit rect { fill:var(--accent-soft); stroke:var(--accent); }
+  .gate.rippling rect { fill:var(--warn); stroke:var(--warn); opacity:.5; }
+  .lbl { fill:var(--muted); font-size:10.5px; font-family:var(--mono); }
+  .bit { fill:var(--surface2); stroke:var(--border2); cursor:pointer; transition:fill .15s; }
+  .bit text { font-family:var(--mono); font-size:15px; fill:var(--text); pointer-events:none; }
+  .bit.on { fill:var(--accent); } .bit.on text { fill:#fff; }
+  .bit:hover { stroke:var(--accent); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">逻辑门 · 4 位行波进位加法器</span><span class="s">点击 A/B 的任意一位来回拨动，看进位如何一级一级"波纹式"传到高位——这就是 CPU 里加法电路的真身</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <svg viewBox="0 0 740 300" id="svg"></svg>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">操作</div>
+    <div class="btn-row">
+      <button class="btn sm" id="rand">🎲 随机 A、B</button>
+      <button class="btn sm ghost" id="clr">清零</button>
+    </div>
+    <div class="readout" id="truth"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      每一级内部都是<b>XOR 求本位和、AND/OR 求进位</b>——第 0 位比较特殊（没有低位可借进位，退化成半加器），第 1~3 位要多算一路"进位输入"，变成<b>全加器</b>。<br><br>
+      拨一下最低位再看：进位真的是一级一级"流"过去的，不是瞬间算完——串起来就是 CPU 加法器，位数越多，这条链越长。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { brkSwitch } from '../_shared/demo.js';
+const N = 4;
+let A = [0, 0, 0, 0], B = [0, 0, 0, 0], xorBroken = false, rippling = false;
+const svg = document.getElementById('svg');
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  (parent || svg).appendChild(e);
+  return e;
+}
+function bitCell(x, y, id) {
+  const g = el('g', { class: 'bit', id, transform: `translate(${x},${y})` });
+  el('rect', { width: 40, height: 34, rx: 7 }, g);
+  el('text', { x: 20, y: 22, 'text-anchor': 'middle' }, g).textContent = '0';
+  return g;
+}
+/* 布局：每级一个方框（bit0 在左=低位，bit3 在右=高位），A/B 寄存器在上方，
+   Cin 从左边框进来，Cout 从右边出去接到下一级，S 输出在方框正下方 */
+const STAGE_X = i => 60 + i * 150;
+const TOPY = 30, BOXY = 110, SUMY = 210;
+for (let i = 0; i < N; i++) {
+  const x = STAGE_X(i);
+  bitCell(x, TOPY, 'A' + i);
+  bitCell(x, TOPY + 44, 'B' + i);
+  el('text', { class: 'lbl', x: x + 20, y: TOPY - 8, 'text-anchor': 'middle' }).textContent = `A${i}`;
+  el('text', { class: 'lbl', x: x + 20, y: TOPY + 44 + 46, 'text-anchor': 'middle' }).textContent = `B${i}`;
+  el('path', { class: 'wire', id: `wA${i}`, d: `M${x + 20},${TOPY + 34} V${BOXY}` });
+  el('path', { class: 'wire', id: `wB${i}`, d: `M${x + 20},${TOPY + 78} V${BOXY - 15} H${x + 70} V${BOXY}` });
+  const g = el('g', { class: 'gate', id: 'gate' + i, transform: `translate(${x},${BOXY})` });
+  el('rect', { width: 100, height: 60, rx: 10 }, g);
+  el('text', { x: 50, y: 24, 'text-anchor': 'middle' }, g).textContent = i === 0 ? '半加器 HA' : `全加器 FA${i}`;
+  el('text', { class: 'lbl', x: 50, y: 42, 'text-anchor': 'middle' }, g).textContent = 'S=A⊕B⊕Cin';
+  el('path', { class: 'wire', id: `wS${i}`, d: `M${x + 50},${BOXY + 60} V${SUMY}` });
+  bitCell(STAGE_X(i) + 30, SUMY, 'S' + i);
+  el('text', { class: 'lbl', x: STAGE_X(i) + 50, y: SUMY + 50, 'text-anchor': 'middle' }).textContent = `S${i}`;
+  if (i < N - 1) {
+    el('path', { class: 'wire', id: `wC${i}`, d: `M${x + 100},${BOXY + 30} H${STAGE_X(i + 1)}` });
+  }
+}
+el('text', { class: 'lbl', x: 20, y: BOXY + 25, 'text-anchor': 'start' }).textContent = 'Cin=0';
+const finalCarryX = STAGE_X(N - 1) + 100;
+el('path', { class: 'wire', id: 'wCout', d: `M${finalCarryX},${BOXY + 30} H${finalCarryX + 40}` });
+bitCell(finalCarryX + 40, BOXY + 13, 'Cout');
+el('text', { class: 'lbl', x: finalCarryX + 60, y: BOXY - 6, 'text-anchor': 'middle' }).textContent = '最终进位';
+el('text', { id: 'eq', x: 370, y: 285, 'text-anchor': 'middle', style: 'font-family:var(--mono);font-size:15px;fill:var(--text)' }).textContent = '';
+
+const $id = id => document.getElementById(id);
+function bitsToNum(bits) { return bits.reduce((s, b, i) => s + b * (2 ** i), 0); }
+function setBit(g, v) {
+  g.querySelector('text').textContent = v;
+  g.classList.toggle('on', !!v);
+}
+/* 真正的全加器逻辑：S = A⊕B⊕Cin；Cout = 三者里至少两个为 1（多数表决）。
+   "弄坏"开关把 XOR 换成 OR：S 算错，Cout 的多数表决逻辑不受影响——
+   这样能看到"只错一步，从那一位开始所有更高位全部跟着错"的连锁效应 */
+function xorGate(a, b) { return xorBroken ? (a | b) : (a ^ b); }
+function stageCalc(a, b, cin) {
+  const s = xorGate(xorGate(a, b), cin);
+  const cout = (a & b) | (cin & (a ^ b));
+  return { s, cout };
+}
+function renderStatic() {
+  const carries = [0];
+  const sums = [];
+  for (let i = 0; i < N; i++) {
+    const { s, cout } = stageCalc(A[i], B[i], carries[i]);
+    sums.push(s); carries.push(cout);
+  }
+  for (let i = 0; i < N; i++) {
+    setBit($id('A' + i), A[i]); setBit($id('B' + i), B[i]); setBit($id('S' + i), sums[i]);
+    $id('wA' + i).classList.toggle('on', !!A[i]);
+    $id('wB' + i).classList.toggle('on', !!B[i]);
+    $id('wS' + i).classList.toggle('on', !!sums[i]);
+    if (i < N - 1) $id('wC' + i).classList.toggle('on', !!carries[i + 1]);
+    $id('gate' + i).classList.toggle('lit', !!(A[i] || B[i] || carries[i]));
+  }
+  setBit($id('Cout'), carries[N]);
+  $id('wCout').classList.toggle('on', !!carries[N]);
+  const an = bitsToNum(A), bn = bitsToNum(B), sn = bitsToNum(sums) + carries[N] * 16;
+  const wrong = xorBroken && sn !== an + bn;
+  $id('eq').textContent = `${an} + ${bn} = ${sn}${wrong ? `　← 错了！应该是 ${an + bn}` : ''}`;
+  $id('eq').style.fill = wrong ? 'var(--err)' : 'var(--text)';
+  $id('truth').innerHTML = `A = ${A.slice().reverse().join('')}₂ = ${an}\nB = ${B.slice().reverse().join('')}₂ = ${bn}\nS = ${sums.slice().reverse().join('')}₂ + 进位${carries[N]} = ${sn}` +
+    (wrong ? `\n<b style="color:var(--err)">⚠ 弄坏生效：XOR 变 OR，位与位之间的错误还会顺着进位链传下去</b>` : '');
+}
+/* 波纹动画：逐级点亮，每级之间留出可见延迟，模拟"进位真的是一级一级流过去的" */
+function rippleAndRender() {
+  if (rippling) { renderStatic(); return; }
+  rippling = true;
+  for (let i = 0; i < N; i++) {
+    setTimeout(() => {
+      document.querySelectorAll('.gate').forEach(g => g.classList.remove('rippling'));
+      $id('gate' + i).classList.add('rippling');
+      if (i === N - 1) setTimeout(() => { renderStatic(); rippling = false; document.querySelectorAll('.gate').forEach(g => g.classList.remove('rippling')); }, 160);
+    }, i * 160);
+  }
+}
+for (let i = 0; i < N; i++) {
+  $id('A' + i).addEventListener('click', () => { A[i] ^= 1; rippleAndRender(); });
+  $id('B' + i).addEventListener('click', () => { B[i] ^= 1; rippleAndRender(); });
+}
+$id('rand').addEventListener('click', () => {
+  A = A.map(() => Math.random() < 0.5 ? 1 : 0);
+  B = B.map(() => Math.random() < 0.5 ? 1 : 0);
+  rippleAndRender();
+});
+$id('clr').addEventListener('click', () => { A = [0, 0, 0, 0]; B = [0, 0, 0, 0]; renderStatic(); });
+document.getElementById('bz').append(brkSwitch('把 XOR 门换成 OR 门', v => { xorBroken = v; renderStatic(); }));
+renderStatic();
+</script>
+</body></html>

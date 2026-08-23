@@ -1,0 +1,158 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>Transformer 立体解剖</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<script type="importmap">{"imports":{"three":"../../assets/lib/three.module.js"}}</script>
+<style>
+  .stage { position:relative; }
+  #info { position:absolute; right:14px; top:14px; width:230px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px; font-size:12.5px; line-height:1.75; display:none; }
+  #info b { color:var(--accent); }
+</style></head><body>
+<div class="demo-head"><span class="badge">3D 场景</span><span class="t">Transformer 立体解剖</span><span class="s">把论文那张著名架构图变成可旋转的雕塑：嵌入塔、多头注意力、前馈层、残差跳线——点击部件看职责</span></div>
+<div class="demo-body">
+  <div class="stage demo-stage">
+    <canvas id="c3d" class="stage-canvas"></canvas>
+    <div id="info"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">数据流</div>
+    <div class="btn-row">
+      <button class="btn sm" id="flow">播放 token 之旅 ▶</button>
+      <button class="btn sm ghost" id="reset">复位视角</button>
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      一个 token 从底部进入，依次穿过：<b>嵌入+位置编码 → N×（多头自注意力 → 前馈）→ 输出</b>。橙色跳线是残差连接——信号的"高速公路"。
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      编码器（左塔）负责"读懂"，解码器（右塔）负责"写出"。当代大模型（GPT 系）只保留解码器塔。
+    </div>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from '../../assets/lib/OrbitControls.js';
+
+const canvas = document.getElementById('c3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(46, 1, 0.1, 100);
+cam.position.set(0, 4, 15);
+const controls = new OrbitControls(cam, canvas);
+controls.enableDamping = true;
+const dark = document.documentElement.dataset.theme === 'dark';
+scene.background = new THREE.Color(dark ? 0x16140f : 0xfaf9f6);
+scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+const dl = new THREE.DirectionalLight(0xffffff, 0.9);
+dl.position.set(5, 9, 7); scene.add(dl);
+
+const COLORS = { embed: 0x0f766e, attn: 0x4338ca, ffn: 0xbe185d, res: 0xb45309, out: 0xb4482b, pos: 0x0e7490 };
+const group = new THREE.Group();
+scene.add(group);
+const parts = [];
+function block(x, y, w, h, d, color, data) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.5, transparent: true, opacity: 0.88 }));
+  m.position.set(x, y, 0);
+  group.add(m);
+  m.userData = data;
+  parts.push(m);
+  return m;
+}
+function label(text, x, y, small = false) {
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  ctx.font = (small ? '20px' : 'bold 24px') + ' sans-serif';
+  const w = ctx.measureText(text).width + 14;
+  c.width = w; c.height = 32;
+  ctx.font = (small ? '20px' : 'bold 24px') + ' sans-serif';
+  ctx.fillStyle = dark ? '#b8b2a4' : '#55524b';
+  ctx.fillText(text, 7, 25);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
+  sp.position.set(x, y, 0);
+  sp.scale.set(w / 90, 0.3, 1);
+  group.add(sp);
+}
+const TOWER = 9;
+/* 输入嵌入 */
+block(0, -4.2, 3.4, 0.6, 2.4, COLORS.embed, { name: '输入嵌入', desc: 'Token（词片）变成向量。每个词住进几百维的语义空间（第五章的词嵌入）。' });
+label('Token 嵌入', -3.2, -4.2, true);
+block(0, -3.4, 3.4, 0.25, 2.4, COLORS.pos, { name: '位置编码', desc: '给每个位置加一个特征向量。注意力天生不知顺序——是它告诉模型"谁在谁前面"。' });
+label('位置编码 +', -3.0, -3.4, true);
+/* N 层编码器 */
+for (let i = 0; i < 2; i++) {
+  const y = -2.2 + i * 2.2;
+  const attn = block(0, y + 0.8, 3.4, 0.55, 2.4, COLORS.attn, { name: `多头自注意力（层${i + 1}）`, desc: '句子内所有词互相注意：Q·K 打分 → softmax → 加权取 V。多组并行 = 多头，各盯一种关系（语法/指代/语义）。' });
+  label('多头自注意力', -3.1, y + 0.8, true);
+  const ffn = block(0, y, 3.4, 0.55, 2.4, COLORS.ffn, { name: `前馈网络（层${i + 1}）`, desc: '每个位置独立过一个小型两层网络，做深度加工。注意力负责"词间交换信息"，前馈负责"位置内深加工"。' });
+  label('前馈网络', -2.5, y, true);
+  /* 残差跳线 */
+  const resGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-1.85, y - 0.1, 1.3), new THREE.Vector3(-2.25, y - 0.1, 1.3),
+    new THREE.Vector3(-2.25, y + 1.35, 1.3), new THREE.Vector3(1.7, y + 1.35, 1.3),
+    new THREE.Vector3(1.7, y + 0.35, 1.3),
+  ]);
+  const res = new THREE.Line(resGeo, new THREE.LineBasicMaterial({ color: COLORS.res }));
+  group.add(res);
+  res.userData = { name: '残差连接', desc: 'F(x)+x：给信号修一条高速公路，让梯度绕过易堵车的层直接回传——152 层网络能训练全靠它。' };
+  parts.push(res);
+  if (i === 0) label('残差 ↷', 2.6, y + 1.55, true);
+}
+/* 输出 */
+block(0, 3.0, 3.4, 0.6, 2.4, COLORS.out, { name: '输出（Linear + Softmax）', desc: '把顶层向量映射到词表：每个候选 token 一个分数，softmax 变成概率分布——"下一个词"的答案。' });
+label('输出概率', -2.6, 3.0, true);
+
+/* token 之旅动画 */
+const token = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 16), new THREE.MeshBasicMaterial({ color: 0xb4482b }));
+token.position.set(0, -4.2, 1.4);
+group.add(token);
+let flowing = false, ft = 0;
+document.getElementById('flow').addEventListener('click', e => { flowing = !flowing; e.target.textContent = flowing ? '停止 ■' : '播放 token 之旅 ▶'; });
+
+/* 拾取 */
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+const info = document.getElementById('info');
+let hovered = null;
+canvas.addEventListener('pointermove', e => {
+  const r = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  ray.setFromCamera(mouse, cam);
+  const hits = ray.intersectObjects(parts.filter(p => p.isMesh));
+  hovered = hits[0]?.object || null;
+  canvas.style.cursor = hovered ? 'pointer' : 'grab';
+});
+canvas.addEventListener('click', () => {
+  if (hovered) {
+    const d = hovered.userData;
+    info.style.display = 'block';
+    info.innerHTML = `<b>${d.name}</b><br>${d.desc}`;
+  } else info.style.display = 'none';
+});
+document.getElementById('reset').addEventListener('click', () => { cam.position.set(0, 4, 15); controls.target.set(0, 0, 0); });
+
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  cam.aspect = r.width / r.height; cam.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas.parentElement);
+resize();
+(function animate() {
+  requestAnimationFrame(animate);
+  if (flowing) {
+    ft += 0.006;
+    if (ft > 1) ft = 0;
+    token.position.y = -4.2 + ft * 7.2;
+    token.position.x = Math.sin(ft * 20) * 0.35;
+    /* 经过的部件发光 */
+    parts.filter(p => p.isMesh).forEach(p => {
+      const near = Math.abs(p.position.y - token.position.y) < 0.5;
+      p.material.emissive?.set(near ? p.material.color : 0x000000);
+      p.material.emissiveIntensity = near ? 0.5 : 0;
+    });
+  }
+  controls.update();
+  renderer.render(scene, cam);
+})();
+</script>
+</body></html>

@@ -1,0 +1,144 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>提示词对照实验室</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; gap:12px; padding:14px; min-width:0; }
+  .pane { flex:1; display:flex; flex-direction:column; gap:8px; min-width:0; }
+  .pane .ph { font-size:12px; font-weight:700; letter-spacing:.08em; }
+  .pane .ph.naive { color:var(--muted); }
+  .pane .ph.pro { color:var(--accent); }
+  .outbox { flex:1; border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:12px 14px; font-size:13.5px; line-height:1.9; overflow-y:auto; white-space:pre-wrap; }
+  .outbox.naive { color:var(--muted); }
+  .weapons { display:flex; gap:4px; flex-wrap:wrap; }
+  .wp { font-size:10.5px; padding:2px 8px; border-radius:10px; background:var(--surface2); color:var(--muted); font-weight:700; border:1px solid var(--border); opacity:.55; transition:all .15s; }
+  .wp.hit { background:var(--accent-soft); color:var(--accent); border-color:transparent; opacity:1; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">提示词对照实验室</span><span class="s">两侧文本框都能编辑——下方技巧清单实时检测你用了哪几件"武器"，编辑改变判定，不是摆设</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="pane">
+      <div class="ph naive">😅 朴素提示词</div>
+      <textarea id="naiveIn" rows="4" style="font-size:13px"></textarea>
+      <div class="weapons" id="weaponsNaive"></div>
+      <div class="outbox naive" id="naiveOut"></div>
+    </div>
+    <div class="pane">
+      <div class="ph pro">🎯 结构化提示词</div>
+      <textarea id="proIn" rows="4" style="font-size:13px"></textarea>
+      <div class="weapons" id="weapons"></div>
+      <div class="outbox" id="proOut"></div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">任务</div>
+    <div id="tasks"></div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn sm" id="run">检测 + 查看参考效果 ▶</button>
+      <button class="btn sm ghost" id="resetBtn">恢复示范版提示词</button>
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      技巧清单是<b>本地规则引擎</b>对你输入文字的实时关键词检测（不调用网络、不是真的在生成文本）。参考效果是这类提示词在真实大模型上通常会得到的示范输出——用来对照，不是把你的文字喂给了模型。
+    </div>
+  </div>
+</div>
+<script type="module">
+const TASKS = [
+  {
+    name: '✍️ 给诗刊投稿信',
+    naive: '帮我写一首关于秋天的诗',
+    pro: '你是一位编辑过获奖诗集的诗歌编辑。请为大学诗刊写一首关于"北方的秋天"的短诗（不超过 8 行），要求：避免"落叶""思念"等高频意象；至少有一个具体的感官细节；结尾克制不升华。读者是大学生。',
+    weapons: ['角色设定', '上下文', '约束', '受众'],
+    naiveOut: '《秋思》\n\n秋风起兮白云飞，\n落叶飘零思念长。\n遥望天边南飞雁，\n不知何处是故乡。\n\n（高频意象堆叠，结尾思乡升华——最"平均"的秋天）',
+    proOut: '《立冬前》\n\n暖气片敲了两声，又停。\n晾在阳台的衬衫\n一夜之间\n硬得像一封拒绝信。\n\n（具体感官细节：暖气管声、冻硬的衬衫；克制收尾，无升华）',
+  },
+  {
+    name: '📰 新闻标题',
+    naive: '给这篇文章起个标题：食堂涨价',
+    pro: '你是校园媒体资深编辑。为以下报道拟 3 个标题：主标题不超过 14 字，要准确（不能标题党），风格分别偏：①直陈事实 ②学生视角 ③深度调查感。报道核心：食堂三楼改造后均价上涨 15%，校方回应成本压力。',
+    weapons: ['角色', '数量约束', '风格示例', '事实边界'],
+    naiveOut: '《食堂涨价了！》\n\n（信息量为零，情绪化标点，像吐槽不像新闻）',
+    proOut: '① 直陈：食堂三楼改造后均价上调 15%\n② 学生视角：多付的三块钱，花在哪儿了？\n③ 调查感：一份食堂账单：涨价背后的成本链\n\n（三个方向、字数受控、无夸大）',
+  },
+  {
+    name: '🧠 概念解释',
+    naive: '什么是过拟合',
+    pro: '你是大一新生的 AI 课程助教。请用"背题的学生"这个类比解释过拟合，控制在 120 字内：先说类比，再说一个后果，最后给一个判断方法。禁止使用公式（除了"过拟合"这个术语本身）。',
+    weapons: ['角色', '类比锚点', '结构指令', '禁令'],
+    naiveOut: '过拟合（overfitting）是机器学习中的现象，指模型在训练集上表现很好但在测试集上表现不佳，通常由模型复杂度过高引起，可通过正则化缓解……\n\n（术语轰炸，像教科书第 37 页）',
+    proOut: '想象一个把五年真题全部背下来的学生：模拟考满分，高考翻车——他背下了题，没学会题背后的规律，这就是过拟合。判断方法很简单：看两个分数差——训练分很高、新题分很低，就是它。\n\n（类比先行、字数受控、零多余术语）',
+  },
+  {
+    name: '📝 论文摘要',
+    naive: '帮我写摘要：关于AI和就业',
+    pro: '你是学术写作顾问。以下段落是我的论文引言初稿，请改写为 150 字的摘要：保留"任务重组"核心论点，删掉修辞问句，改为陈述句，术语首现给英文。初稿：【AI 来了，人类的饭碗还保得住吗？有人恐慌，有人乐观。我认为 AI 不是消灭职业，而是重组职业内部的任务构成……】',
+    weapons: ['材料', '字数', '删除指令', '格式规范'],
+    naiveOut: '本文探讨了人工智能与就业的关系问题，分析了 AI 对就业的影响，并提出了相应的对策建议，具有一定的理论和现实意义。\n\n（"探讨了…分析了…提出了…"三件套，空话摘要模板）',
+    proOut: '针对人工智能对劳动力市场的冲击，本文提出"任务重组"分析框架：职业由任务束构成，AI 替代的是任务而非职业整体。基于任务层面数据的分析显示，重复性认知任务替代与创造性任务增强同时发生，就业政策的焦点应从"保职业"转向"促转型"。\n\n（论点保留、修辞删除、术语带英文）',
+  },
+];
+/* 通用提示词技巧检测——对文本框里的真实内容做关键词/模式匹配，不是固定演示 */
+const TECH = [
+  { key: 'role', label: '角色设定', test: s => /你是(一[名位])?|作为(一[名位])?|你扮演/.test(s) },
+  { key: 'audience', label: '受众', test: s => /读者是|面向|受众/.test(s) },
+  { key: 'context', label: '上下文/材料', test: s => /以下|初稿|报道|材料|【|「/.test(s) },
+  { key: 'constraint', label: '明确约束', test: s => /不超过|控制在|字以内|字内|要求[:：]?|\d+\s*[字行]/.test(s) },
+  { key: 'format', label: '格式规范', test: s => /①|②|拟\s*\d|\d\s*个标题|分别[偏为]|列出|改写为/.test(s) },
+  { key: 'negative', label: '禁令/删除项', test: s => /禁止|不要|避免|删掉|不能/.test(s) },
+  { key: 'analogy', label: '类比锚点', test: s => /类比|想象|好比|就像|打个比方/.test(s) },
+  { key: 'structure', label: '结构指令', test: s => /先.{0,8}再.{0,10}(最后|然后)|第一步|依次|按顺序/.test(s) },
+];
+const ADVICE = {
+  role: '没有角色设定，模型会用最"平均"的语气回答，缺乏专业视角。',
+  audience: '没说清读者是谁，输出的难度和语气可能文体错位。',
+  context: '没给上下文材料，模型只能凭常识脑补，容易文不对题。',
+  constraint: '没有明确约束（字数/范围），输出长度和结构会飘。',
+  format: '没有格式规范，模型可能给一段话而不是你要的结构化列表。',
+  negative: '没有禁令/删除项，模型很可能踩中你想避开的老套写法。',
+  analogy: '没有类比锚点，抽象概念的解释容易停留在术语堆砌。',
+  structure: '没有结构指令（先…再…最后…），输出的信息顺序会比较随意。',
+};
+function renderChecklist(elId, text) {
+  document.getElementById(elId).innerHTML = TECH.map(t =>
+    `<span class="wp${t.test(text) ? ' hit' : ''}">${t.test(text) ? '✅' : '⬜'} ${t.label}</span>`).join('');
+}
+
+let cur = 0;
+const tasksEl = document.getElementById('tasks');
+TASKS.forEach((t, i) => {
+  const b = document.createElement('button');
+  b.className = 'btn sm ghost';
+  b.style.cssText = 'display:block;width:100%;margin-bottom:6px;text-align:left;font-size:12px';
+  b.textContent = t.name;
+  b.addEventListener('click', () => load(i));
+  tasksEl.append(b);
+});
+function load(i) {
+  cur = i;
+  document.getElementById('naiveIn').value = TASKS[i].naive;
+  document.getElementById('proIn').value = TASKS[i].pro;
+  run();
+}
+document.getElementById('resetBtn').addEventListener('click', () => load(cur));
+function run() {
+  const naiveText = document.getElementById('naiveIn').value;
+  const proText = document.getElementById('proIn').value;
+  renderChecklist('weaponsNaive', naiveText);
+  renderChecklist('weapons', proText);
+  document.getElementById('naiveOut').innerHTML =
+    `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">📎 参考效果（示范文本，非实时生成）</div>` + TASKS[cur].naiveOut;
+  const hits = TECH.filter(t => t.test(proText));
+  const missing = TECH.filter(t => !t.test(proText));
+  const proOutEl = document.getElementById('proOut');
+  if (hits.length >= 4) {
+    proOutEl.innerHTML = `<div style="font-size:11px;color:var(--ok);margin-bottom:6px">📎 覆盖了 ${hits.length}/${TECH.length} 种技巧，达到示范水准——参考效果：</div>` + TASKS[cur].proOut;
+  } else {
+    proOutEl.innerHTML = `<div style="font-size:11px;color:var(--err);margin-bottom:8px">⚠ 只覆盖了 ${hits.length}/${TECH.length} 种技巧。本地规则引擎不会真的重新生成文本，但可以告诉你少了什么会怎样：</div>` +
+      missing.map(m => `<div style="margin-bottom:6px">· <b style="color:var(--text)">${m.label}</b>缺失：${ADVICE[m.key]}</div>`).join('');
+  }
+}
+document.getElementById('naiveIn').addEventListener('input', () => renderChecklist('weaponsNaive', document.getElementById('naiveIn').value));
+document.getElementById('proIn').addEventListener('input', () => renderChecklist('weapons', document.getElementById('proIn').value));
+document.getElementById('run').addEventListener('click', run);
+load(0);
+</script>
+</body></html>

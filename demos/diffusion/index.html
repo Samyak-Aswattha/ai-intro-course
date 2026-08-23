@@ -1,0 +1,135 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>扩散去噪画室</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:14px; }
+  .canvasbox { position:relative; width:min(300px, 60%); aspect-ratio:1; border:1px solid var(--border); border-radius:14px; overflow:hidden; background:#fff; box-shadow:var(--shadow, 0 4px 14px rgba(0,0,0,.1)); }
+  canvas { width:100%; height:100%; display:block; image-rendering:pixelated; }
+  .steps2 { width:min(420px, 92%); }
+  .condrow { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .cond { padding:5px 13px; border-radius:16px; border:1.5px solid var(--border); background:var(--surface); font-size:12.5px; cursor:pointer; }
+  .cond.on { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); font-weight:700; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">扩散模型 · 去噪画室</span><span class="s">拖动时间轴看"猫"从纯噪声中显影；切换文字引导改变去噪方向；开跳步模式看质量崩坏</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="canvasbox"><canvas id="cv" width="64" height="64"></canvas></div>
+    <div class="steps2">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)"><span>t=1000 纯噪声</span><span>去噪进度</span><span>t=0 成图</span></div>
+      <input type="range" id="t" min="0" max="1000" value="1000" style="width:100%">
+    </div>
+    <div class="condrow" id="conds"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">引导词</div>
+    <div id="conds2"></div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn sm" id="play">自动去噪 ▶</button>
+      <button class="btn sm ghost" id="noise">换一批噪声</button>
+    </div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="readout" id="ro"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      扩散 = 分而治之：把"从噪声造图"拆成一千道"减一点噪"的简单题。提示词通过交叉注意力在<b>每一步</b>调整方向。<br><br>开「大步跳跃」：每 8 步并作 1 步，细节来不及收敛——<b>步数是质量的学费</b>。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { brkSwitch, RNG } from '../_shared/demo.js';
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const S = 64;
+/* 目标图（程序化绘制）：几种主题 */
+function drawTarget(kind, rng) {
+  const off = document.createElement('canvas');
+  off.width = off.height = S;
+  const c = off.getContext('2d');
+  c.fillStyle = '#f4f0e6';
+  c.fillRect(0, 0, S, S);
+  if (kind === 'cat') {
+    c.fillStyle = '#e08b4c';
+    c.beginPath(); c.ellipse(32, 36, 14, 13, 0, 0, 7); c.fill();
+    c.beginPath(); c.moveTo(20, 28); c.lineTo(16, 14); c.lineTo(28, 24); c.fill();
+    c.beginPath(); c.moveTo(44, 28); c.lineTo(48, 14); c.lineTo(36, 24); c.fill();
+    c.fillStyle = '#23211d';
+    c.beginPath(); c.arc(27, 34, 2, 0, 7); c.arc(37, 34, 2, 0, 7); c.fill();
+    c.strokeStyle = '#23211d'; c.lineWidth = 1.4;
+    c.beginPath(); c.moveTo(30, 39); c.lineTo(34, 39); c.moveTo(32, 37); c.lineTo(32, 41); c.stroke();
+  } else if (kind === 'city') {
+    c.fillStyle = '#5a6b8c';
+    for (let i = 0; i < 6; i++) {
+      const h = 18 + Math.floor(rng() * 30);
+      c.fillRect(4 + i * 10, S - h - 4, 8, h);
+    }
+    c.fillStyle = '#f0d28a';
+    for (let i = 0; i < 26; i++) c.fillRect(6 + Math.floor(rng() * 54), 20 + Math.floor(rng() * 36), 2, 2);
+    c.fillStyle = '#b45309'; c.beginPath(); c.arc(50, 14, 6, 0, 7); c.fill();
+  } else if (kind === 'star') {
+    c.fillStyle = '#1c2a4a'; c.fillRect(0, 0, S, S);
+    for (let i = 0; i < 40; i++) {
+      c.fillStyle = `rgba(255,255,${200 + Math.floor(rng() * 55)},${0.4 + rng() * 0.6})`;
+      c.beginPath(); c.arc(rng() * S, rng() * S, rng() * 1.4, 0, 7); c.fill();
+    }
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(32, 30, 7, 0, 7); c.fill();
+  }
+  return c.getImageData(0, 0, S, S);
+}
+const CONDS = [['cat', '🐱 一只猫'], ['city', '🏙️ 城市黄昏'], ['star', '🌌 星空'], ['none', '🎲 无引导']];
+let cond = 'cat', noiseSeed = 1, bigSteps = false;
+let noise = new Float32Array(S * S * 4);
+function genNoise() {
+  const rng = RNG(noiseSeed * 991 + 17);
+  for (let i = 0; i < noise.length; i++) noise[i] = (rng() * 2 - 1) * 120;
+}
+genNoise();
+function render(t) {
+  const target = drawTarget(cond === 'none' ? ['cat', 'city', 'star'][noiseSeed % 3] : cond, RNG(noiseSeed * 31));
+  const strength = t / 1000;   /* 噪声占比 */
+  const img = ctx.createImageData(S, S);
+  const stepSkip = bigSteps ? 0.45 : 0;   /* 跳步惩罚：噪声残留 */
+  for (let i = 0; i < S * S * 4; i++) {
+    let v = (target.data[i] * (1 - strength) + (128 + noise[i]) * strength);
+    if (bigSteps && strength > 0.25 && strength < 0.9) v += noise[i] * 0.22;  /* 跳步导致残留噪声 */
+    img.data[i] = Math.max(0, Math.min(255, v));
+  }
+  ctx.putImageData(img, 0, 0);
+  document.getElementById('ro').innerHTML = `t = <b>${1000 - t}</b> / 1000（已去噪 ${(1000 - t) / 10}%）${bigSteps && t > 0 ? '\n⚠ 大步跳跃：噪声残留，细节崩坏' : ''}`;
+}
+document.getElementById('t').addEventListener('input', e => render(+e.target.value));
+function renderConds() {
+  [['conds'], ['conds2']].forEach(id => {
+    const box = document.getElementById(id);
+    box.innerHTML = '';
+    CONDS.forEach(([k, n]) => {
+      const b = document.createElement('button');
+      b.className = 'cond' + (id === 'conds' ? '' : ' btn sm ghost');
+      if (id === 'conds2') b.className = 'btn sm ' + (k === cond ? '' : 'ghost');
+      b.textContent = n;
+      b.addEventListener('click', () => { cond = k; renderConds(); render(+document.getElementById('t').value); });
+      box.append(b);
+    });
+  });
+}
+document.getElementById('noise').addEventListener('click', () => { noiseSeed++; genNoise(); render(+document.getElementById('t').value); });
+let playing = false, pt = null;
+document.getElementById('play').addEventListener('click', e => {
+  playing = !playing;
+  e.target.textContent = playing ? '暂停 ■' : '自动去噪 ▶';
+  if (playing) {
+    let t = +document.getElementById('t').value >= 1000 ? 1000 : 0;
+    if (t === 0) t = 1000;
+    document.getElementById('t').value = 1000;
+    pt = setInterval(() => {
+      t -= bigSteps ? 40 : 10;
+      if (t < 0) t = 0;
+      document.getElementById('t').value = t;
+      render(t);
+      if (t === 0) { clearInterval(pt); playing = false; e.target.textContent = '自动去噪 ▶'; }
+    }, 60);
+  } else clearInterval(pt);
+});
+document.getElementById('bz').append(brkSwitch('大步跳跃（步数 ÷4）', v => { bigSteps = v; render(+document.getElementById('t').value); }));
+renderConds();
+render(1000);
+</script>
+</body></html>

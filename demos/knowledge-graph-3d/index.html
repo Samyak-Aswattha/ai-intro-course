@@ -1,0 +1,206 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>3D 知识图谱漫游</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<script type="importmap">{"imports":{"three":"../../assets/lib/three.module.js","three/addons/":"../../assets/lib/"}}</script>
+<style>
+  .stage { position:relative; }
+  #label { position:absolute; pointer-events:none; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:6px 12px; font-size:12.5px; box-shadow:0 4px 12px rgba(0,0,0,.15); display:none; max-width:240px; line-height:1.6; }
+  #label b { color:var(--accent); }
+</style></head><body>
+<div class="demo-head"><span class="badge">3D 场景</span><span class="t">课程知识图谱 · 3D</span><span class="s">拖动旋转 · 滚轮缩放 · 悬停看说明 · 点击跳转对应小节（在本页内打开）</span></div>
+<div class="demo-body">
+  <div class="stage demo-stage">
+    <canvas id="c3d" class="stage-canvas"></canvas>
+    <div id="label"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">图例</div>
+    <div class="legend"><span><i style="background:#0f766e"></i>引论</span><span><i style="background:#4338ca"></i>通识</span><span><i style="background:#b45309"></i>争锋</span><span><i style="background:#be185d"></i>实战</span></div>
+    <div class="panel-title">视图</div>
+    <div class="btn-row">
+      <button class="btn sm ghost" id="spin">自转 ⏸</button>
+      <button class="btn sm ghost" id="reset">复位视角</button>
+    </div>
+    <div class="ctl"><label><span>连线密度</span><b id="dv"></b></label><input type="range" id="dens" min="1" max="3" step="1" value="2"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      每个节点是一个知识点，连线是"学会它之前最好先会谁"。第三维（高度）编码<b>章节顺序</b>——从地基到前沿。<br><br>
+      这就是知识表示的力量：结构一旦画成图，<b>学习路径、依赖缺口、知识边界</b>都变得可计算。
+    </div>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/OrbitControls.js';
+
+const NODES = [
+  { id: 'bin', t: '二进制与计算', d: '一切的地基：比特、布尔、图灵机', ch: 1, url: '../../modules/intro/ch01-computation.html' },
+  { id: 'agi', t: '智能的定义', d: '多维能力：学习/推理/感知/语言', ch: 1, url: '../../modules/intro/ch01-what-is-intelligence.html' },
+  { id: 'tt', t: '图灵测试', d: '行为判据与中文屋之争', ch: 1, url: '../../modules/intro/ch01-turing-test.html' },
+  { id: 'hist', t: 'AI 简史', d: '三起两落七十年', ch: 1, url: '../../modules/intro/ch01-history.html' },
+  { id: 'sym', t: '符号主义', d: '知识表示与专家系统', ch: 2, url: '../../modules/foundations/ch02-symbolic-vs-connection.html' },
+  { id: 'search', t: '搜索与博弈', d: '状态树、A*、极小极大', ch: 2, url: '../../modules/foundations/ch02-search.html' },
+  { id: 'ml', t: '机器学习', d: '从数据学规律的新范式', ch: 3, url: '../../modules/foundations/ch03-what-is-ml.html' },
+  { id: 'reg', t: '回归与梯度下降', d: '损失、优化、下山', ch: 3, url: '../../modules/foundations/ch03-regression.html' },
+  { id: 'clf', t: '分类', d: '决策树/KNN/朴素贝叶斯', ch: 3, url: '../../modules/foundations/ch03-classification.html' },
+  { id: 'over', t: '过拟合', d: '泛化、正则、偏差方差', ch: 3, url: '../../modules/foundations/ch03-overfitting.html' },
+  { id: 'perc', t: '感知机', d: '第一个会学习的神经元', ch: 4, url: '../../modules/foundations/ch04-perceptron.html' },
+  { id: 'mlp', t: '多层网络与激活', d: '非线性弯折的魔力', ch: 4, url: '../../modules/foundations/ch04-mlp-activation.html' },
+  { id: 'bp', t: '反向传播', d: '链式法则分配误差', ch: 4, url: '../../modules/foundations/ch04-backprop.html' },
+  { id: 'cnn', t: 'CNN', d: '卷积看世界', ch: 5, url: '../../modules/foundations/ch05-cnn.html' },
+  { id: 'rnn', t: 'RNN 与 LSTM', d: '有记忆的网络', ch: 5, url: '../../modules/foundations/ch05-rnn.html' },
+  { id: 'emb', t: '词嵌入', d: '语义的几何学', ch: 5, url: '../../modules/foundations/ch05-embedding.html' },
+  { id: 'attn', t: '注意力', d: 'QKV 与信息路由', ch: 6, url: '../../modules/foundations/ch06-attention.html' },
+  { id: 'tf', t: 'Transformer', d: '并行堆叠的骨架', ch: 6, url: '../../modules/foundations/ch06-transformer.html' },
+  { id: 'llm', t: '大语言模型', d: '预训练-微调-对齐', ch: 6, url: '../../modules/foundations/ch06-llm-gpt.html' },
+  { id: 'gen', t: '生成模型', d: 'GAN 与扩散', ch: 6, url: '../../modules/foundations/ch06-diffusion.html' },
+  { id: 'eth', t: 'AI 伦理', d: '偏见、隐私、对齐', ch: 7, url: '../../modules/foundations/ch07-bias-fairness.html' },
+  { id: 'poet', t: '诗人何为', d: '创作主体性之辩', ch: 8, url: '../../modules/debates/ch08-poet.html' },
+  { id: 'prompt', t: '提示词工程', d: '把任务说清楚', ch: 9, url: '../../modules/practice/ch09-prompt.html' },
+  { id: 'agent', t: 'Agent', d: '规划-行动-反思循环', ch: 9, url: '../../modules/practice/ch09-agent.html' },
+  { id: 'rag', t: 'RAG', d: '检索增强生成', ch: 9, url: '../../modules/practice/ch09-knowledge-base.html' },
+];
+const EDGES = [
+  ['bin', 'sym'], ['bin', 'ml'], ['agi', 'tt'], ['agi', 'sym'], ['hist', 'sym'], ['hist', 'ml'],
+  ['sym', 'search'], ['sym', 'eth'], ['ml', 'reg'], ['ml', 'clf'], ['ml', 'over'],
+  ['reg', 'perc'], ['perc', 'mlp'], ['mlp', 'bp'], ['bp', 'over'], ['bp', 'cnn'], ['bp', 'rnn'],
+  ['mlp', 'cnn'], ['rnn', 'emb'], ['emb', 'attn'], ['rnn', 'attn'], ['attn', 'tf'], ['tf', 'llm'],
+  ['mlp', 'gen'], ['llm', 'gen'], ['llm', 'eth'], ['llm', 'poet'], ['llm', 'prompt'], ['prompt', 'agent'],
+  ['emb', 'rag'], ['agent', 'rag'], ['eth', 'poet'], ['over', 'llm'], ['attn', 'gen']
+];
+const COLORS = { 1: 0x0f766e, 2: 0x4338ca, 3: 0x4338ca, 4: 0x4338ca, 5: 0x4338ca, 6: 0x4338ca, 7: 0x4338ca, 8: 0xb45309, 9: 0xbe185d };
+
+const canvas = document.getElementById('c3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+cam.position.set(0, 2, 13);
+const controls = new OrbitControls(cam, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+const dark = document.documentElement.dataset.theme === 'dark';
+scene.background = new THREE.Color(dark ? 0x16140f : 0xfaf9f6);
+
+/* 按章分层布置节点 */
+const byCh = {};
+NODES.forEach(n => (byCh[n.ch] = byCh[n.ch] || []).push(n));
+const nodeMap = {};
+let k = 0;
+Object.entries(byCh).forEach(([ch, list]) => {
+  const y = (5 - (+ch - 1) * 1.15);
+  list.forEach((n, i) => {
+    const ang = i / list.length * Math.PI * 2 + k * 0.55;
+    const r = 1.6 + list.length * 0.34;
+    const g = new THREE.SphereGeometry(0.22, 20, 20);
+    const m = new THREE.MeshStandardMaterial({ color: COLORS[n.ch], roughness: 0.4, metalness: 0.1, emissive: COLORS[n.ch], emissiveIntensity: 0.12 });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.position.set(Math.cos(ang) * r, y + Math.sin(k * 1.7 + i) * 0.4, Math.sin(ang) * r);
+    scene.add(mesh);
+    nodeMap[n.id] = { ...n, mesh };
+    k++;
+  });
+});
+/* 连线 */
+const edgeGroup = new THREE.Group(); scene.add(edgeGroup);
+const edgeMat = new THREE.LineBasicMaterial({ color: dark ? 0x4b4436 : 0xcfc9bc, transparent: true, opacity: 0.55 });
+function buildEdges() {
+  edgeGroup.clear();
+  EDGES.slice(0, EDGES.length).forEach(([a, b]) => {
+    const A = nodeMap[a], B = nodeMap[b];
+    if (!A || !B) return;
+    const geo = new THREE.BufferGeometry().setFromPoints([A.mesh.position, B.mesh.position]);
+    edgeGroup.add(new THREE.Line(geo, edgeMat));
+  });
+}
+buildEdges();
+
+/* 标签 sprite（canvas 文字） */
+function makeLabel(text) {
+  const c = document.createElement('canvas');
+  const ctx2 = c.getContext('2d');
+  ctx2.font = 'bold 34px sans-serif';
+  const w = ctx2.measureText(text).width + 30;
+  c.width = w; c.height = 52;
+  ctx2.font = 'bold 34px sans-serif';
+  ctx2.fillStyle = dark ? '#e9e4d9' : '#23211d';
+  ctx2.fillText(text, 15, 37);
+  const tex = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  sp.scale.set(w / 130, 52 / 130, 1);
+  return sp;
+}
+NODES.forEach(n => {
+  const sp = makeLabel(n.t);
+  sp.position.copy(nodeMap[n.id].mesh.position).add(new THREE.Vector3(0, 0.38, 0));
+  scene.add(sp);
+  nodeMap[n.id].label = sp;
+});
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const dl = new THREE.DirectionalLight(0xffffff, 1.1);
+dl.position.set(4, 8, 6);
+scene.add(dl);
+
+/* 拾取与提示 */
+const ray = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const label = document.getElementById('label');
+let hovered = null;
+canvas.addEventListener('pointermove', e => {
+  const r = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  ray.setFromCamera(mouse, cam);
+  const hits = ray.intersectObjects(Object.values(nodeMap).map(n => n.mesh));
+  hovered = hits[0] ? Object.values(nodeMap).find(n => n.mesh === hits[0].object) : null;
+  canvas.style.cursor = hovered ? 'pointer' : 'grab';
+  if (hovered) {
+    label.style.display = 'block';
+    label.style.left = (e.clientX - r.left + 14) + 'px';
+    label.style.top = (e.clientY - r.top + 10) + 'px';
+    label.innerHTML = `<b>${hovered.t}</b><br>${hovered.d}<br><span style="color:var(--muted);font-size:11px">点击打开小节 ↗</span>`;
+  } else label.style.display = 'none';
+});
+canvas.addEventListener('click', () => { if (hovered) window.open(hovered.url, '_blank'); });
+
+let spinning = true;
+document.getElementById('spin').addEventListener('click', e => { spinning = !spinning; e.target.textContent = spinning ? '自转 ⏸' : '自转 ▶'; });
+document.getElementById('reset').addEventListener('click', () => { cam.position.set(0, 2, 13); controls.target.set(0, 0, 0); });
+document.getElementById('dens').addEventListener('input', e => {
+  const d = +e.target.value;
+  document.getElementById('dv').textContent = ['', '稀疏', '正常', '全部'][d];
+  edgeGroup.clear();
+  const step = 4 - d;
+  EDGES.filter((_, i) => d === 3 || i % step === (d === 2 ? 0 : 1)).forEach(([a, b]) => {
+    const A = nodeMap[a], B = nodeMap[b];
+    if (!A || !B) return;
+    const geo = new THREE.BufferGeometry().setFromPoints([A.mesh.position, B.mesh.position]);
+    edgeGroup.add(new THREE.Line(geo, edgeMat));
+  });
+});
+document.getElementById('dv').textContent = '正常';
+
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  cam.aspect = r.width / r.height;
+  cam.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas.parentElement);
+resize();
+
+let t0 = performance.now();
+(function animate(now) {
+  requestAnimationFrame(animate);
+  const t = (now - t0) / 1000;
+  if (spinning) scene.rotation.y = t * 0.12;
+  Object.values(nodeMap).forEach((n, i) => {
+    n.mesh.position.y += Math.sin(t * 1.2 + i) * 0.0006;
+    n.label.position.copy(n.mesh.position).add(new THREE.Vector3(0, 0.38, 0));
+  });
+  controls.update();
+  renderer.render(scene, cam);
+})(t0);
+</script>
+</body></html>

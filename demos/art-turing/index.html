@@ -1,0 +1,122 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>艺术图灵测试</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:16px; overflow:auto; }
+  .painting { width:min(300px, 70%); aspect-ratio:1; border-radius:14px; border:1px solid var(--border); position:relative; cursor:pointer; overflow:hidden; box-shadow:0 6px 20px rgba(0,0,0,.1); background:var(--surface); }
+  .painting canvas { width:100%; height:100%; display:block; }
+  .reveal2 { width:min(420px, 92%); border-radius:12px; padding:14px 18px; font-size:13.5px; line-height:1.8; display:none; }
+  .reveal2.good { background:var(--ok-soft,#dcf0e2); color:var(--ok); }
+  .reveal2.bad { background:var(--err-soft,#f8dcdc); color:var(--err); }
+  .choices { display:flex; gap:10px; }
+  .proc { font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:8px; white-space:pre-wrap; line-height:1.7; }
+</style></head><body>
+<div class="demo-head"><span class="badge">辩论场</span><span class="t">艺术图灵测试</span><span class="s">人画 / 机画盲测——判断后展示"创作过程"，复盘你的依据是构图、笔触，还是说不清的什么</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="painting"><canvas id="art" width="240" height="240"></canvas></div>
+    <div class="choices">
+      <button class="btn" id="c1">🎨 人类画的</button>
+      <button class="btn" id="c2">🤖 机器生成</button>
+    </div>
+    <div class="reveal2" id="reveal"></div>
+    <button class="btn sm ghost" id="next">下一幅 ⏭</button>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">战绩</div>
+    <div class="readout" id="ro">0 / 0</div>
+    <div class="panel-title">这里发生的事</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      本测试的所有"画"都由程序生成：<b>人类风格</b>模拟手绘的不均匀笔触与犹豫；<b>机器风格</b>模拟生成图像的光滑统计纹理。<br><br>
+      判断依据复盘后请回答：如果分辨不出来，<b>"谁画的"还重要吗</b>？本真性是作品的属性，还是观看者的信念？（第八章核心问题）
+    </div>
+  </div>
+</div>
+<script type="module">
+const rng = (() => { let s = 12345; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+/* 人类风格：不均匀笔触、犹豫、局部覆盖——顺手记下这幅具体用了什么参数，
+   好让揭晓文案说出"这一幅"的具体依据，而不是每次都背同一段通用台词 */
+function humanPaint(x, s) {
+  x.fillStyle = '#f6f2e9'; x.fillRect(0, 0, s, s);
+  const cols = ['#b4533a', '#3a6b5a', '#c9a13d', '#2d3a5c'];
+  let wMin = Infinity, wMax = -Infinity;
+  for (let i = 0; i < 40; i++) {
+    const cx = rng() * s, cy = rng() * s;
+    x.strokeStyle = cols[Math.floor(rng() * cols.length)];
+    x.globalAlpha = 0.35 + rng() * 0.45;
+    const lw = 2 + rng() * 9;
+    wMin = Math.min(wMin, lw); wMax = Math.max(wMax, lw);
+    x.lineWidth = lw;
+    x.beginPath();
+    let px = cx, py = cy;
+    x.moveTo(px, py);
+    for (let k = 0; k < 6; k++) {
+      px += (rng() - 0.5) * 38; py += (rng() - 0.5) * 38;
+      x.quadraticCurveTo(px + (rng() - .5) * 20, py + (rng() - .5) * 20, px, py);
+    }
+    x.stroke();
+  }
+  /* 犹豫的局部重涂 */
+  let overpaint = 0;
+  for (let i = 0; i < 8; i++) {
+    x.globalAlpha = 0.5;
+    x.fillStyle = cols[Math.floor(rng() * cols.length)];
+    x.beginPath(); x.ellipse(rng() * s, rng() * s, 8 + rng() * 20, 6 + rng() * 14, rng() * 3, 0, 7); x.fill();
+    overpaint++;
+  }
+  x.globalAlpha = 1;
+  return { tell: `40 笔手绘线条，线宽在 ${wMin.toFixed(1)}~${wMax.toFixed(1)}px 间明显不稳（下笔力度不均）；另有 ${overpaint} 处半透明局部重涂——像是画到一半又改主意的痕迹。` };
+}
+/* 机器风格：平滑渐变 + 统计性重复纹理 */
+function machinePaint(x, s) {
+  const g = x.createLinearGradient(0, 0, s, s);
+  g.addColorStop(0, '#3d2f6b'); g.addColorStop(0.5, '#8a4f9e'); g.addColorStop(1, '#e0a0c0');
+  x.fillStyle = g; x.fillRect(0, 0, s, s);
+  /* 光滑漩涡 */
+  for (let i = 0; i < 28; i++) {
+    const cx = rng() * s, cy = rng() * s;
+    const grad = x.createRadialGradient(cx, cy, 1, cx, cy, 30 + rng() * 40);
+    grad.addColorStop(0, `rgba(255,220,240,${0.25 + rng() * 0.3})`);
+    grad.addColorStop(1, 'rgba(255,220,240,0)');
+    x.fillStyle = grad;
+    x.beginPath(); x.arc(cx, cy, 30 + rng() * 40, 0, 7); x.fill();
+  }
+  /* 统计重复单元 */
+  let aMin = Infinity, aMax = -Infinity;
+  for (let i = 0; i < 60; i++) {
+    const a = 0.08 + rng() * 0.15;
+    aMin = Math.min(aMin, a); aMax = Math.max(aMax, a);
+    x.fillStyle = `rgba(255,255,255,${a})`;
+    const px = rng() * s, py = rng() * s;
+    x.save(); x.translate(px, py); x.rotate(rng() * 6.3);
+    x.fillRect(-8, -1.6, 16, 3.2);
+    x.restore();
+  }
+  return { tell: `28 个同心光晕漩涡叠出平滑渐变，外加 60 个方向随机、但透明度全部挤在 ${aMin.toFixed(2)}~${aMax.toFixed(2)} 窄区间的微笔触——统计上太"均匀"，不像手会犯的错。` };
+}
+let human = rng() < 0.5, answered = false, correct = 0, total = 0, curTell = '';
+function render() {
+  answered = false;
+  const c = document.getElementById('art');
+  const x = c.getContext('2d');
+  curTell = (human ? humanPaint(x, 240) : machinePaint(x, 240)).tell;
+  document.getElementById('reveal').style.display = 'none';
+}
+function judge(saidHuman) {
+  if (answered) return;
+  answered = true; total++;
+  const right = saidHuman === human;
+  if (right) correct++;
+  const rv = document.getElementById('reveal');
+  rv.style.display = 'block';
+  rv.className = 'reveal2 ' + (right ? 'good' : 'bad');
+  rv.innerHTML = (right ? '✅ 正确！' : '❌ 错误。') + ` 这幅是<b>${human ? '人类风格' : '机器风格'}</b>画的。<br>这一幅的具体依据：${curTell}` +
+    (total >= 3 ? '<br><br><b>复盘</b>：你的判断依据是笔触、构图，还是某种"说不出的什么"？如果盲测分数接近 50%——"谁画的"这件事对作品价值还成立吗？' : '');
+  document.getElementById('ro').innerHTML = `${correct} / ${total}（正确率 ${Math.round(correct / total * 100)}%）`;
+}
+document.getElementById('c1').addEventListener('click', () => judge(true));
+document.getElementById('c2').addEventListener('click', () => judge(false));
+document.getElementById('next').addEventListener('click', () => { human = rng() < 0.5; render(); });
+render();
+</script>
+</body></html>

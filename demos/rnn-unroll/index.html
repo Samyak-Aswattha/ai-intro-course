@@ -1,0 +1,169 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>RNN 时间展开</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:14px; gap:12px; overflow-y:auto; }
+  .inputline { display:flex; gap:8px; flex-wrap:wrap; }
+  .tok { padding:8px 16px; border:1.5px solid var(--border); border-radius:10px; background:var(--surface); font-size:15px; cursor:pointer; transition:all .15s; }
+  .tok.cur { border-color: var(--accent); background: var(--accent-soft); font-weight:700; }
+  .roll { flex:1; position:relative; min-height:200px; border:1px solid var(--border); border-radius:12px; background:var(--surface); overflow:hidden; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .membar { display:flex; align-items:center; gap:10px; font-size:12.5px; }
+</style></head><body>
+<div class="demo-head"><span class="badge">动画</span><span class="t">RNN 时间展开 · 记忆的河流</span><span class="s">逐词送入句子，看隐藏状态 h（记忆）如何滚动更新；点击任意时刻查看它"还记得"哪些词</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="inputline" id="toks"></div>
+    <div class="roll"><canvas id="cv"></canvas></div>
+    <div class="membar" id="membar">按「播放」送词</div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">播放</div>
+    <div class="btn-row">
+      <button class="btn sm" id="play">播放 ▶</button>
+      <button class="btn sm ghost" id="next">下一个词 ⏭</button>
+      <button class="btn sm ghost" id="reset">重置</button>
+    </div>
+    <div class="tabs" id="sents"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="readout" id="ro"></div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, brkSwitch } from '../_shared/demo.js';
+const SENTENCES = [
+  { t: ['我', '爱', '北京', '的', '秋天'], note: '中性句：记忆平稳累积' },
+  { t: ['那个', '会', '弹钢琴', '的', '女孩', '今天', '迟到', '了'], note: '长程依赖：句首的"女孩"要撑到句尾才被谓语使用' },
+  { t: ['苹果', '发布了', '新', '手机', '，', '很好吃'], note: '语义反转：读到"很好吃"，记忆里"手机"的激活应当下跌（手机不能吃）' },
+];
+let si = 0, step = -1, vanish = false;
+let states = [];
+const cv = document.getElementById('cv');
+let ctx = autoFit(cv, draw);
+const WORD_MEM = ['我', '爱', '北京', '的', '秋天', '那个', '会', '弹钢琴', '女孩', '今天', '迟到', '了', '苹果', '发布了', '新', '手机', '，', '很好吃'];
+/* 每个词一个 6 维"语义特征"（手工设计，稳定可复现） */
+const FEAT = {
+  '我': [1,0,0,0,0,0], '爱': [.8,.6,0,0,0,0], '北京': [.6,.2,.7,0,0,0], '的': [0,0,0,.2,0,0], '秋天': [.5,.3,.6,.1,.4,0],
+  '那个': [.2,0,0,.3,0,.4], '会': [.1,.4,0,.3,.2,0], '弹钢琴': [.4,.5,.2,0,.9,.1], '女孩': [.9,.1,0,0,.2,.8],
+  '今天': [.2,0,.1,.6,0,.2], '迟到': [.3,.2,0,.7,0,.5], '了': [0,0,0,.3,0,0],
+  '苹果': [.3,.2,.5,.1,.3,.6], '发布了': [.1,.3,.2,.4,.1,0], '新': [.2,.3,.1,.4,0,0], '手机': [.3,.1,.5,.2,.7,.1], '，': [0,0,0,.1,0,0], '很好吃': [.6,.9,.1,0,.5,.9],
+};
+function runTo(n) {
+  states = [];
+  let h = [0, 0, 0, 0, 0, 0];
+  for (let i = 0; i <= Math.min(n, SENTENCES[si].t.length - 1); i++) {
+    const w = SENTENCES[si].t[i];
+    const f = FEAT[w] || [.3, .3, .3, .3, .3, .3];
+    h = h.map((v, k) => {
+      const carry = v * (vanish ? 0.55 : 0.92);
+      const add = f[k] * 0.55;
+      return Math.tanh(carry + add);
+    });
+    states.push({ w, h: [...h] });
+  }
+}
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const sent = SENTENCES[si];
+  const n = sent.t.length;
+  const X = i => 34 + i * ((w - 60) / Math.max(1, n - 1));
+  /* 时间轴 */
+  ctx.strokeStyle = cssv('--border');
+  ctx.beginPath(); ctx.moveTo(20, h / 2); ctx.lineTo(w - 20, h / 2); ctx.stroke();
+  /* 每步的隐藏状态条形（6 维） */
+  states.forEach((s, i) => {
+    const bx = X(i);
+    for (let k = 0; k < 6; k++) {
+      const v = s.h[k];
+      const bh = v * 34;
+      ctx.fillStyle = `hsla(${k * 55}, 65%, 50%, .85)`;
+      ctx.fillRect(bx - 16 + k * 5.5, h / 2 - Math.max(0, bh), 4.5, Math.abs(bh));
+    }
+    /* 词 */
+    ctx.fillStyle = i <= step ? cssv('--text') : cssv('--muted');
+    ctx.font = (i === step ? 'bold ' : '') + '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(s.w, bx, h / 2 + 24);
+    ctx.textAlign = 'left';
+    /* 循环箭头 */
+    if (i < states.length - 1) {
+      ctx.strokeStyle = 'rgba(67,56,202,.5)';
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.arc((X(i) + X(i + 1)) / 2, h / 2 - 58, 14, Math.PI * 0.15, Math.PI * 0.85, false);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  });
+  /* h 标注 */
+  ctx.fillStyle = cssv('--muted'); ctx.font = '11px sans-serif';
+  ctx.fillText('↑ h（隐藏状态 / 记忆）', 24, 18);
+  ctx.fillText('彩色条 = 记忆各维度的激活强度', 24, 32);
+  if (vanish) { ctx.fillStyle = 'var(--err)'; ctx.fillStyle = '#dc2626'; ctx.font = 'bold 11px sans-serif'; ctx.fillText('⚠ 梯度/记忆衰减模式：旧词的激活每步 ×0.55', 24, h - 10); }
+}
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function upd() {
+  const mb = document.getElementById('membar');
+  if (step < 0) { mb.textContent = '按「播放」送词'; document.getElementById('ro').textContent = ''; return; }
+  const s = states[step];
+  /* 词贡献（简化：早先词在当前 h 中的残留） */
+  let contrib = [];
+  if (step > 0) {
+    for (let i = 0; i < step; i++) {
+      const decay = Math.pow(vanish ? 0.55 : 0.92, step - i);
+      const mag = states[i].h.reduce((a, v) => a + v, 0) / 6;
+      contrib.push({ w: states[i].w, v: decay * mag });
+    }
+    contrib.sort((a, b) => b.v - a.v);
+  }
+  mb.innerHTML = `t=${step + 1} 读到「<b style="color:var(--accent)">${s.w}</b>」` + (contrib.length ? `　最记得：${contrib.slice(0, 3).map(c => `${c.w}(${(c.v * 100).toFixed(0)}%)`).join('、')}` : '（记忆开始）');
+  document.getElementById('ro').innerHTML = `当前 h = [${s.h.map(v => v.toFixed(2)).join(', ')}]\n${SENTENCES[si].note}${vanish && step > 2 ? '\n⚠ 衰减模式：三个词之前的信息已所剩无几——这就是 RNN 的长程遗忘' : ''}`;
+  /* 高亮 token */
+  document.querySelectorAll('.tok').forEach((t, i) => t.classList.toggle('cur', i === step));
+}
+const toksEl = document.getElementById('toks');
+function renderToks() {
+  toksEl.innerHTML = '';
+  SENTENCES[si].t.forEach((w, i) => {
+    const t = document.createElement('div');
+    t.className = 'tok';
+    t.textContent = w;
+    t.addEventListener('click', () => { step = i; runTo(step); draw(); upd(); });
+    toksEl.append(t);
+  });
+}
+document.getElementById('next').addEventListener('click', () => {
+  if (step >= SENTENCES[si].t.length - 1) return;
+  step++; runTo(step); draw(); upd();
+});
+document.getElementById('reset').addEventListener('click', () => { step = -1; states = []; draw(); upd(); });
+let playing = false, pt = null;
+document.getElementById('play').addEventListener('click', e => {
+  playing = !playing;
+  e.target.textContent = playing ? '暂停 ■' : '播放 ▶';
+  if (playing) {
+    pt = setInterval(() => {
+      if (step >= SENTENCES[si].t.length - 1) { clearInterval(pt); playing = false; e.target.textContent = '播放 ▶'; return; }
+      step++; runTo(step); draw(); upd();
+    }, 900);
+  } else clearInterval(pt);
+});
+const sentsEl = document.getElementById('sents');
+SENTENCES.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.textContent = '句子' + (i + 1);
+  if (!i) b.classList.add('on');
+  b.addEventListener('click', () => {
+    sentsEl.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    si = i; step = -1; states = [];
+    renderToks(); draw(); upd();
+  });
+  sentsEl.append(b);
+});
+document.getElementById('bz').append(brkSwitch('记忆衰减模式（朴素 RNN）', v => { vanish = v; runTo(Math.max(0, step)); draw(); upd(); }));
+renderToks(); draw();
+</script>
+</body></html>

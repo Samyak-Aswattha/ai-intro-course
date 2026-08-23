@@ -1,0 +1,150 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>感知机训练台</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; cursor:crosshair; }
+  .ro { position:absolute; right:12px; top:12px; min-width:170px; }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">感知机训练台</span><span class="s">点击放置 A/B 两类点（左/右键），训练看分界线一步步挪动；关掉"阈值化"看它塌缩</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="readout ro" id="ro"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">训练</div>
+    <div class="btn-row">
+      <button class="btn sm" id="train">训练 ▶</button>
+      <button class="btn sm ghost" id="step">单步</button>
+      <button class="btn sm ghost" id="demo">载入异或死局</button>
+      <button class="btn sm ghost" id="clear">清空</button>
+    </div>
+    <div id="ctls"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      规则：答错才改权重（错了 → w += lr·(目标−输出)·x）。<b>线性可分必收敛</b>（罗森布拉特定理），异或永远不收敛。<br><br>
+      关掉「阈值化输出」——感知机变成线性回归：分界线还在，但对噪声点不再"纠错"，这就是<b>非线性判决的必要性</b>。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, slider, brkSwitch, RNG, gauss } from '../_shared/demo.js';
+const cv = document.getElementById('cv');
+let ctx = autoFit(cv, draw);
+let pts = [], w1 = 0.3, w2 = -0.4, b = 0.1, lr = 0.02, thresh = true, running = false, epoch = 0, errors = 0;
+const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+/* 数据域 [-1,1] */
+const X = px => (px / W()) * 2.6 - 1.3;
+const Y = py => ((H() - py) / H()) * 2.6 - 1.3;
+const PX = x => (x + 1.3) / 2.6 * W();
+const PY = y => H() - (y + 1.3) / 2.6 * H();
+
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  const r = cv.getBoundingClientRect();
+  const x = X(e.clientX - r.left), y = Y(e.clientY - r.top);
+  pts.push({ x, y, c: e.button === 2 ? 1 : 0 });
+  running = false;
+  document.getElementById('train').textContent = '训练 ▶';
+  draw();
+});
+function out(x, y) {
+  const s = w1 * x + w2 * y + b;
+  return thresh ? (s >= 0 ? 1 : 0) : 1 / (1 + Math.exp(-s * 6));
+}
+function trainStep() {
+  epoch++;
+  errors = 0;
+  for (const p of pts) {
+    const o = out(p.x, p.y);
+    const err = p.c - o;
+    if (Math.abs(err) > 0.01) errors++;
+    w1 += lr * err * p.x;
+    w2 += lr * err * p.y;
+    b += lr * err * 0.6;
+  }
+  updRO();
+}
+function loop() {
+  if (!running) return;
+  trainStep();
+  draw();
+  if (errors === 0 && pts.length) {
+    running = false;
+    document.getElementById('train').textContent = '训练 ▶';
+    document.getElementById('ro').innerHTML += `\n✅ 第 ${epoch} 轮全部答对，收敛！`;
+    return;
+  }
+  requestAnimationFrame(loop);
+}
+function draw() {
+  ctx.clearRect(0, 0, W(), H());
+  /* 决策区域（淡色） */
+  const step = 9;
+  for (let px = 0; px < W(); px += step) for (let py = 0; py < H(); py += step) {
+    ctx.fillStyle = out(X(px + step / 2), Y(py + step / 2)) > 0.5 ? '#b4482b10' : '#0f766e10';
+    ctx.fillRect(px, py, step, step);
+  }
+  /* 分界线 w1·x + w2·y + b = 0 */
+  ctx.strokeStyle = cssv('--accent'); ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  const yAt = x => -(w1 * x + b) / (w2 || 1e-9);
+  const x1 = -1.3, x2 = 1.3, y1 = yAt(x1), y2 = yAt(x2);
+  ctx.moveTo(PX(x1), PY(Math.max(-1.3, Math.min(1.3, y1))));
+  ctx.lineTo(PX(x2), PY(Math.max(-1.3, Math.min(1.3, y2))));
+  ctx.stroke();
+  /* 法向量 */
+  ctx.save();
+  ctx.translate(W() / 2, H() / 2);
+  const nl = Math.hypot(w1, w2) || 1;
+  ctx.strokeStyle = 'rgba(67,56,202,.7)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 0);
+  ctx.lineTo(w1 / nl * 70, -w2 / nl * 70); ctx.stroke();
+  ctx.fillStyle = '#4338ca'; ctx.font = '11px sans-serif';
+  ctx.fillText('w（权重方向）', w1 / nl * 70 + 6, -w2 / nl * 70);
+  ctx.restore();
+  ctx.lineWidth = 1;
+  /* 数据点 */
+  pts.forEach(p => {
+    ctx.fillStyle = p.c ? '#b4482b' : '#0f766e';
+    ctx.beginPath(); ctx.arc(PX(p.x), PY(p.y), 6, 0, 7); ctx.fill();
+    /* 错分标红圈 */
+    const o = out(p.x, p.y) > 0.5 ? 1 : 0;
+    if (o !== p.c) {
+      ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(PX(p.x), PY(p.y), 10, 0, 7); ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+  });
+}
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function updRO() {
+  document.getElementById('ro').innerHTML = `轮次 <b>${epoch}</b>　错分 <b>${errors}/${pts.length}</b>\nw₁=${w1.toFixed(2)} w₂=${w2.toFixed(2)} b=${b.toFixed(2)}`;
+}
+document.getElementById('train').addEventListener('click', () => {
+  running = !running;
+  document.getElementById('train').textContent = running ? '暂停 ■' : '训练 ▶';
+  if (running) loop();
+});
+document.getElementById('step').addEventListener('click', () => { trainStep(); draw(); });
+document.getElementById('clear').addEventListener('click', () => { pts = []; epoch = 0; draw(); updRO(); });
+document.getElementById('demo').addEventListener('click', () => {
+  const rng = RNG(42);
+  pts = [
+    { x: -0.6, y: -0.6, c: 0 }, { x: 0.6, y: 0.6, c: 0 },
+    { x: -0.6, y: 0.6, c: 1 }, { x: 0.6, y: -0.6, c: 1 },
+    { x: -0.5, y: -0.5, c: 0 }, { x: 0.5, y: 0.5, c: 0 },
+    { x: -0.5, y: 0.5, c: 1 }, { x: 0.5, y: -0.5, c: 1 },
+  ];
+  epoch = 0;
+  draw(); updRO();
+  document.getElementById('ro').innerHTML += '\n⚔ 异或布局：单层感知机永远无法分开，按住训练看它挣扎';
+});
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '学习率', min: 1, max: 100, value: 20, fmt: v => (v / 1000).toFixed(3), onInput: v => lr = v / 1000 }));
+document.getElementById('bz').append(brkSwitch('去掉阈值化（变线性回归）', v => { thresh = !v; draw(); }));
+ctls.append(slider({ label: '动画速度', min: 1, max: 10, value: 5, onInput: () => {} }));
+draw(); updRO();
+</script>
+</body></html>

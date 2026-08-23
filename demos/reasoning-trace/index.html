@@ -1,0 +1,150 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>思维链剧场</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; gap:12px; padding:14px; min-width:0; overflow:auto; }
+  .pane2 { flex:1; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:12px; background:var(--surface); min-width:0; }
+  .pane2 .ph2 { padding:10px 14px; border-bottom:1px solid var(--border); font-size:13px; font-weight:700; background:var(--surface2); display:flex; gap:8px; align-items:center; }
+  .pane2 .ph2 .tag2 { font-size:10px; padding:2px 9px; border-radius:10px; font-weight:800; }
+  .pane2 .ph2 .t1 { background:#eef0f6; color:#5a5f73; }
+  .pane2 .ph2 .t2 { background:#e8f3ee; color:#137a54; }
+  .pbody { flex:1; overflow-y:auto; padding:12px 16px; font-size:13.5px; line-height:1.95; white-space:pre-wrap; }
+  .pbody .think { color:var(--muted); font-style:italic; }
+  .pbody .ans { font-weight:700; }
+  .pbody .cursor { display:inline-block; width:8px; height:15px; background:var(--accent); animation:blink .8s infinite; vertical-align:-2px; }
+  @keyframes blink { 50% { opacity:0; } }
+  .tokenbar { display:flex; gap:2px; height:6px; border-radius:3px; overflow:hidden; margin-top:8px; }
+  .tokenbar i { flex:1; background:var(--border-strong); }
+  .tokenbar i.think { background:var(--c3); }
+  .tokenbar i.ans2 { background:var(--accent); }
+  .llm-meta { padding:7px 14px; border-top:1px dashed var(--border); font-size:11px; color:var(--muted); font-family:var(--mono); }
+</style></head><body>
+<div class="demo-head"><span class="badge">新·2026</span><span class="t">思维链剧场 · 直答 vs 深思</span><span class="s">同一道题两种模式对比：普通模型一步给答案，推理模型（o1/R1/GLM 思考版）先展开长链思考——看 token 花在哪里</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="pane2">
+      <div class="ph2"><span class="tag2 t1">MODE A</span>普通模型 · 直答模式</div>
+      <div class="pbody" id="outA"></div>
+      <div class="tokenbar" id="barA"></div>
+      <div class="llm-meta" id="metaA">tokens: 0</div>
+    </div>
+    <div class="pane2">
+      <div class="ph2"><span class="tag2 t2">MODE B</span>推理模型 · 思考模式（Reasoning）</div>
+      <div class="pbody" id="outB"></div>
+      <div class="tokenbar" id="barB"></div>
+      <div class="llm-meta" id="metaB">tokens: 0</div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">题库</div>
+    <div id="qs"></div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn sm" id="run">播放对比 ▶</button>
+      <button class="btn sm ghost" id="speed">速度 ×2</button>
+    </div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 关键参数</div></div>
+    <div class="readout" id="ro"></div>
+  </div>
+</div>
+<script type="module">
+import { brkSwitch } from '../_shared/demo.js';
+const Q = [
+  {
+    q: '一个球拍加一个球共 11 元，球拍比球贵 10 元，球多少钱？',
+    A: '球 1 元。',
+    B: ['先列方程：设球 x 元，球拍 x+10。', 'x + (x+10) = 11 → 2x = 1 → x = 0.5？', '等等，检验：球 0.5 元则球拍 10.5 元，差恰为 10 ✓ 总价 11 ✓', '但直觉上 0.5 好像不对……重算：2x = 11 − 10 = 1，x = 0.5。', '再检验一遍：0.5 + 10.5 = 11 ✓ 差 10 ✓ 成立。', '很多人脱口而出"1 元"——那会差 9 元。正确答案：'],
+    ans: '球 0.5 元（5 角）。脱口而出的"1 元"是系统 1 直觉的陷阱。',
+    note: '认知反射测试经典题：直答模式多数人答 1 元。',
+  },
+  {
+    q: '9.11 和 9.9 哪个大？',
+    A: '9.11 大（因为 11 > 9）。',
+    B: ['先比较整数部分：都是 9，相等。', '再比小数：.11 vs .9。', '注意陷阱：不能按位数直接比"11 > 9"。', '统一位数：0.11 vs 0.90。', '0.90 > 0.11，所以 9.9 > 9.11。', '为什么直觉会说 9.11 大？因为版本号/日期的类比干扰了数值比较。'],
+    ans: '9.9 更大。小数比较要看位值：0.90 > 0.11。',
+    note: '大模型曾集体翻车的题：分词把 9.11 切成"版本号"式 token。',
+  },
+  {
+    q: 'strawberry 里有几个 r？',
+    A: '2 个。',
+    B: ['逐段拼写：s-t-r-a-w-b-e-r-r-y。', '标记每个 r：第 3 位 r¹，第 9 位 r²，第 10 位 r³。', '共 3 个 r。', '为什么模型常答 2？因为 token 化后模型看到的是词块编号，不是字母序列——需要主动"重新拼写"才能数对。'],
+    ans: '3 个 r。这道题 2024 年让无数大模型翻车，推理模型靠逐步拼写解决。',
+    note: '2024 著名考题：暴露 tokenizer 的字符级盲区。',
+  },
+  {
+    q: '病房里 5 台机器 5 分钟做 5 个零件，100 台机器做 100 个零件要几分钟？',
+    A: '100 分钟。',
+    B: ['归一：5 台机器 5 分钟做 5 个 → 1 台机器 5 分钟做 1 个。', '所以每台机器的速率是每 5 分钟 1 个。', '100 台机器同时开动，5 分钟内共做 100 个。', '直觉的"100 分钟"错在把机器数和时间的比例搞混了——机器是并行的。'],
+    ans: '5 分钟。机器并行工作，产能随台数线性放大。',
+    note: '另一道认知反射经典：直觉答案是 100。',
+  },
+];
+let cur = 0, playing = false, sp = 1, showThink = true;
+const outA = document.getElementById('outA'), outB = document.getElementById('outB');
+const qsEl = document.getElementById('qs');
+Q.forEach((q, i) => {
+  const b = document.createElement('button');
+  b.className = 'btn sm ghost';
+  b.style.cssText = 'display:block;width:100%;margin-bottom:6px;text-align:left;font-size:12px';
+  b.textContent = `${i + 1}. ${q.q.slice(0, 22)}…`;
+  b.addEventListener('click', () => { cur = i; renderQ(); });
+  qsEl.append(b);
+});
+function bars(el, thinkN, ansN) {
+  const total = thinkN + ansN;
+  el.innerHTML = Array.from({ length: 40 }, (_, i) => `<i class="${i < thinkN / total * 40 ? 'think' : 'ans2'}"></i>`).join('');
+}
+const wait = ms => new Promise(r => setTimeout(r, ms / sp));
+async function typeInto(el, text, cls, metaEl, count) {
+  const span = document.createElement('span');
+  if (cls) span.className = cls;
+  el.append(span);
+  const cur2 = document.createElement('span'); cur2.className = 'cursor'; el.append(cur2);
+  for (const ch of text) {
+    span.textContent += ch;
+    count.n++;
+    if (ch === '，' || ch === '。' || ch === '：' || ch === '\n') { metaEl.textContent = `tokens: ~${count.n}`; await wait(30); }
+    await wait(14);
+  }
+  cur2.remove();
+}
+async function play() {
+  const q = Q[cur];
+  outA.innerHTML = ''; outB.innerHTML = '';
+  const cA = { n: 0 }, cB = { n: 0 };
+  const mA = document.getElementById('metaA'), mB = document.getElementById('metaB');
+  playing = true;
+  document.getElementById('ro').textContent = `题目：${q.q}`;
+  /* B 先思考（模拟推理模型先出长思维链） */
+  const thinkBody = document.createElement('span'); thinkBody.className = 'think';
+  outB.append(thinkBody);
+  const c1 = document.createElement('span'); c1.className = 'cursor'; outB.append(c1);
+  for (const line of q.B) {
+    if (!showThink && line !== q.B[q.B.length - 1]) { cB.n += line.length; continue; }
+    for (const ch of line) { thinkBody.textContent += ch; cB.n++; mB.textContent = `思考中 tokens: ~${cB.n}`; await wait(9); }
+    thinkBody.textContent += '\n'; await wait(60);
+  }
+  c1.remove();
+  await typeInto(outB, '\n' + q.ans, 'ans', mB, cB);
+  /* A 直答（更早给出，但答错/勉强） */
+  await typeInto(outA, '让我直接回答：\n', '', mA, cA);
+  await typeInto(outA, q.A + '\n', 'ans', mA, cA);
+  await typeInto(outA, '\n（答案' + (cur === 0 ? '不正确——重算：设球 x 元…其实应该是 0.5 元，但直觉抢先了' : cur === 1 ? '错了：9.9 > 9.11' : cur === 2 ? '错了：实际有 3 个 r' : '错了：只需 5 分钟') + '）', 'think', mA, cA);
+  mA.textContent = `tokens: ~${cA.n}`;
+  mB.textContent = `思考 ~${Math.round(cB.n * 0.75)} + 作答 ~${Math.round(cB.n * 0.25)} tokens`;
+  bars(document.getElementById('barA'), cA.n * 0.2, cA.n * 0.8);
+  bars(document.getElementById('barB'), cB.n * 0.75, cB.n * 0.25);
+  document.getElementById('ro').innerHTML = `题目：${q.q}\n结论：直答 ${cA.n} tokens 答错；深思 ${cB.n} tokens 答对。\n教学点：${q.note}\n2026 现状：推理模型（o 系列 / DeepSeek-R1 / GLM 思考模式）把"先想再答"内化为训练目标——RL 奖励答对，于是长思维链自发涌现。`;
+  playing = false;
+}
+function renderQ() {
+  const q = Q[cur];
+  outA.innerHTML = `<span class="think">（等待播放）</span>`;
+  outB.innerHTML = `<span class="think">（等待播放）</span>`;
+  document.getElementById('ro').textContent = `题目：${q.q}`;
+}
+document.getElementById('run').addEventListener('click', () => { if (!playing) play(); });
+document.getElementById('speed').addEventListener('click', e => { sp = sp === 1 ? 3 : 1; e.target.textContent = sp === 1 ? '速度 ×2' : '速度 ×1'; });
+document.getElementById('bz').append(brkSwitch('关掉思维链（退化为直答模式）', v => { showThink = !v; }));
+renderQ();
+</script>
+</body></html>

@@ -1,0 +1,132 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>过拟合滑杆实验</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .dual { position:absolute; right:12px; top:12px; width:210px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px; font-size:12px; }
+  .dual .row { display:flex; justify-content:space-between; margin:3px 0; font-family:var(--mono); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">过拟合 · 复杂度滑杆</span><span class="s">10 个噪声数据点，从 1 次拉到 15 次多项式——看训练误差归零、测试误差起飞的 U 形曲线</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="dual">
+      <div class="row"><span>训练误差</span><b id="e1" style="color:var(--c3)">—</b></div>
+      <div class="row"><span>测试误差</span><b id="e2" style="color:var(--err)">—</b></div>
+      <div class="row"><span>当前阶数</span><b id="dg">1</b></div>
+      <div class="gauge"><div id="bar" style="width:6%"></div></div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">控制台</div>
+    <div id="ctls"></div>
+    <div class="btn-row">
+      <button class="btn sm ghost" id="newd">换一批数据</button>
+      <button class="btn sm ghost" id="more">数据 ×5</button>
+      <button class="btn sm ghost" id="less">数据 ÷5</button>
+    </div>
+    <div class="readout" id="ro"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      真实规律是一条平滑正弦（灰线）。<b>蓝点</b>是训练集，<b>描边点</b>是没见过的测试点。<br><br>
+      阶数 1–3：欠拟合（弯不过来）；4–6：刚好；10+：过拟合（为噪声扭曲成过山车）。<br><br>
+      过拟合时点「数据 ×5」——<b>更多数据本身就是药</b>。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { autoFit, slider, RNG, gauss } from '../_shared/demo.js';
+const cv = document.getElementById('cv');
+let ctx = autoFit(cv, draw);
+let pts = [], testPts = [], deg = 3, noise = 0.16, n = 10;
+const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+const X = x => 40 + x * (W() - 70);      /* 数据域 x∈[0,1] */
+const Y = y => H() - 36 - ((y + 1.2) / 2.9) * (H() - 60);
+const TRUE = x => Math.sin(x * 6.3) * 0.55;
+function gen() {
+  const rng = RNG(Math.floor(Math.random() * 99999));
+  pts = []; testPts = [];
+  for (let i = 0; i < n; i++) { const x = (i + 0.5) / n + gauss(rng, 0, 0.01); pts.push({ x: Math.max(0.02, Math.min(0.98, x)), y: TRUE(x) + gauss(rng, 0, noise) }); }
+  for (let i = 0; i < n; i++) { const x = (i + rng() * 0.9) / n; testPts.push({ x: Math.max(0.02, Math.min(0.98, x)), y: TRUE(x) + gauss(rng, 0, noise) }); }
+}
+/* 多项式最小二乘（正规方程 + 高斯消元） */
+function fitPoly(pts, deg) {
+  const m = deg + 1;
+  const A = Array.from({ length: m }, () => new Array(m + 1).fill(0));
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j < m; j++) {
+      A[i][j] = pts.reduce((s, p) => s + Math.pow(p.x, i + j), 0);
+    }
+    A[i][m] = pts.reduce((s, p) => s + p.y * Math.pow(p.x, i), 0);
+  }
+  /* 高斯消元 */
+  for (let col = 0; col < m; col++) {
+    let piv = col;
+    for (let r = col + 1; r < m; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+    [A[col], A[piv]] = [A[piv], A[col]];
+    if (Math.abs(A[col][col]) < 1e-12) continue;
+    for (let r = 0; r < m; r++) {
+      if (r === col) continue;
+      const f = A[r][col] / A[col][col];
+      for (let c = col; c <= m; c++) A[r][c] -= f * A[col][c];
+    }
+  }
+  return A.map((row, i) => Math.abs(row[i]) < 1e-12 ? 0 : row[m] / row[i]);
+}
+function evalPoly(co, x) { return co.reduce((s, c, i) => s + c * Math.pow(x, i), 0); }
+let co = [0, 0];
+function compute() { co = fitPoly(pts, deg); }
+function err(set) {
+  return set.reduce((a, p) => a + (evalPoly(co, p.x) - p.y) ** 2, 0) / set.length;
+}
+function draw() {
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+  /* 真实函数 */
+  ctx.strokeStyle = cssv('--border2'); ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  for (let x = 0; x <= 1.001; x += 0.02) { const px = X(x), py = Y(TRUE(x)); x === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); }
+  ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+  /* 拟合曲线 */
+  compute();
+  ctx.strokeStyle = cssv('--accent'); ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  let prevY = null;
+  for (let x = 0; x <= 1.001; x += 0.008) {
+    const y = evalPoly(co, x);
+    const py = Y(Math.max(-1.5, Math.min(1.7, y)));
+    if (prevY !== null && Math.abs(py - prevY) > h * 0.5) { prevY = py; continue; }
+    x === 0 ? ctx.moveTo(X(x), py) : ctx.lineTo(X(x), py);
+    prevY = py;
+  }
+  ctx.stroke(); ctx.lineWidth = 1;
+  /* 数据点 */
+  pts.forEach(p => { ctx.fillStyle = '#4338ca'; ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 5, 0, 7); ctx.fill(); });
+  testPts.forEach(p => {
+    ctx.fillStyle = '#4338ca';
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 3.5, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 6.5, 0, 7); ctx.stroke(); ctx.lineWidth = 1;
+  });
+  ctx.fillStyle = cssv('--muted'); ctx.font = '11px sans-serif';
+  ctx.fillText('灰虚线：真实规律　蓝点：训练　红圈：测试', 44, 18);
+}
+function cssv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function upd() {
+  const e1 = err(pts), e2 = err(testPts);
+  document.getElementById('e1').textContent = e1.toFixed(4);
+  document.getElementById('e2').textContent = e2.toFixed(4);
+  document.getElementById('dg').textContent = deg;
+  document.getElementById('bar').style.width = Math.min(100, e2 * 60) + '%';
+  document.getElementById('ro').innerHTML = `多项式阶数 <b>${deg}</b>${deg <= 2 ? '\n状态：欠拟合（连规律都没抓住）' : deg >= 10 ? '\n⚠ 状态：过拟合（训练低测试高，正在背噪声）' : '\n状态：拟合良好'}`;
+  draw();
+}
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '模型复杂度（多项式阶数）', min: 1, max: 15, value: 3, onInput: v => { deg = v; upd(); } }));
+ctls.append(slider({ label: '噪声强度', min: 2, max: 45, value: 16, fmt: v => (v / 100).toFixed(2), onInput: v => { noise = v / 100; gen(); upd(); } }));
+document.getElementById('newd').addEventListener('click', () => { gen(); upd(); });
+document.getElementById('more').addEventListener('click', () => { n = Math.min(60, n * 5); gen(); upd(); });
+document.getElementById('less').addEventListener('click', () => { n = Math.max(5, Math.round(n / 5)); gen(); upd(); });
+gen(); upd();
+</script>
+</body></html>

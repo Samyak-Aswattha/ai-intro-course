@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>人工智能学科依赖关系详解 · 互动导引（极简炫酷版）</title>
+  <style>
+    :root{
+      --bg:#070b12; --panel:#0d1420; --muted:#9aa4b5; --text:#e7eefc;
+      --brand:#6ae6ff; --brand-2:#8a7dff; --accent:#43f1a6;
+      --card:#0f1726; --radius:16px; --radius-sm:12px;
+      --shadow:0 14px 40px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.04) inset;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{ margin:0; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial; background:var(--bg); color:var(--text); overflow:hidden; }
+    #bg{ position:fixed; inset:0; z-index:-1; background:radial-gradient(900px 500px at -10% -20%, rgba(106,230,255,.08), transparent), radial-gradient(700px 400px at 110% 0%, rgba(138,125,255,.08), transparent); }
+
+    .app{ display:grid; grid-template-columns:300px 1fr; grid-template-rows:64px 1fr; height:100vh; grid-template-areas:"topbar topbar" "sidebar main"; }
+    .topbar{ grid-area:topbar; display:flex; align-items:center; gap:12px; padding:0 16px; background:linear-gradient(90deg, rgba(10,15,25,.9), rgba(10,15,25,.6)); border-bottom:1px solid rgba(255,255,255,.08); backdrop-filter: blur(8px); }
+    .brand{ display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.4px; }
+    .logo{ width:28px;height:28px;border-radius:50%; background: conic-gradient(from 180deg at 50% 50%, var(--brand), var(--brand-2), var(--accent), var(--brand)); box-shadow:0 0 0 2px rgba(255,255,255,.06), 0 0 30px rgba(106,230,255,.45) inset; }
+
+    .sidebar{ grid-area:sidebar; overflow:auto; border-right: 1px solid rgba(255,255,255,.08); background: linear-gradient(180deg, rgba(13,20,32,.92), rgba(13,20,32,.7)); padding: 14px; backdrop-filter: blur(8px); }
+
+    /* 搜索导航 */
+    .searchbox{ position:sticky; top:0; z-index:5; padding-bottom:10px; background: linear-gradient(180deg, rgba(13,20,32,.95), rgba(13,20,32,.7)); border-bottom:1px solid rgba(255,255,255,.08); margin-bottom:10px; }
+    .searchbox .row{ display:flex; gap:8px; align-items:center; }
+    #q{ flex:1; height:38px; border-radius:12px; border:1px solid rgba(255,255,255,.16); background:rgba(10,15,25,.8); color:var(--text); padding:0 12px; outline:none; }
+    #q:focus{ border-color: rgba(106,230,255,.45); box-shadow: 0 0 0 3px rgba(106,230,255,.15); }
+    .kbd{ font-size:11px; padding:2px 6px; border:1px solid rgba(255,255,255,.2); border-radius:8px; color:#cfe9ff; }
+    .search-meta{ display:flex; justify-content:space-between; margin-top:6px; font-size:12px; color:var(--muted) }
+    .results{ margin-top:8px; display:flex; flex-direction:column; gap:6px; max-height:36vh; overflow:auto; }
+    .result{ border:1px solid rgba(255,255,255,.08); background:rgba(15,23,38,.5); border-radius:10px; padding:8px 10px; cursor:pointer; }
+    .result:hover{ border-color: rgba(106,230,255,.25); background: rgba(106,230,255,.08); }
+    .result .t{ color:#eaf6ff; font-size:13px; }
+    .result .b{ color:var(--muted); font-size:12px; }
+
+    .nav{ display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+    .nav a{ text-decoration:none; color:var(--text); padding:10px 12px; border-radius:12px; border:1px solid transparent; }
+    .nav a:hover{ background: rgba(106,230,255,.08); border-color: rgba(106,230,255,.18); }
+    .nav a.active{ background: linear-gradient(180deg, rgba(106,230,255,.16), rgba(138,125,255,.16)); border-color: rgba(255,255,255,.18); }
+
+    .main{ grid-area:main; overflow:auto; padding: 18px 22px 60px; position:relative; }
+    .hero{ display:flex; align-items:center; justify-content:space-between; gap:14px; padding:16px 18px; border-radius:var(--radius); background: linear-gradient(180deg, rgba(67,241,166,.14), rgba(67,241,166,.07)); border:1px solid rgba(67,241,166,.28); box-shadow: 0 10px 34px rgba(67,241,166,.18); }
+    .hero h1{ margin:0; font-size:20px; line-height:1.4; }
+
+    section{ margin-top:22px; padding: 12px; border-radius: var(--radius); background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); border:1px solid rgba(255,255,255,.08); box-shadow: var(--shadow); }
+    section>h2{ margin:4px 8px 12px; font-size:18px; }
+    .grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); gap:16px; }
+
+    /* 知识地图 */
+    .map-wrap{ height:460px; border-radius:var(--radius); position:relative; overflow:hidden; background: radial-gradient(800px 500px at -10% -20%, rgba(106,230,255,.06), transparent), radial-gradient(700px 400px at 110% 0%, rgba(138,125,255,.06), transparent); border:1px solid rgba(255,255,255,.08); box-shadow: var(--shadow); }
+    #kmap{ width:100%; height:100%; display:block; }
+    .map-legend{ position:absolute; left:8px; top:8px; display:flex; gap:6px; flex-wrap:wrap; }
+    .pill{ padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid rgba(255,255,255,.18); background:rgba(13,20,32,.7); color:#cfe9ff }
+
+    details.card{ background: var(--card); border:1px solid rgba(106,230,255,.15); border-radius: var(--radius-sm); padding: 0; box-shadow: var(--shadow); overflow:hidden; transition:.2s border-color, .2s transform; position:relative }
+    details.card[open]{ border-color: rgba(138,125,255,.3); }
+    summary{ list-style:none; cursor:pointer; padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    summary::-webkit-details-marker{ display:none }
+    .title{ font-weight:600; }
+    .hint{ color:var(--muted); font-size:12px; }
+    .content{ padding: 0 14px 14px; color: var(--muted); font-size:13px; line-height:1.65; }
+
+    /* 二级手风琴（子要点） */
+    details.sub{ margin-top:8px; border-left:2px solid rgba(106,230,255,.22); border-radius:10px; background:linear-gradient(90deg, rgba(106,230,255,.06), transparent 40%); }
+    details.sub>summary{ padding:8px 10px; font-size:13px; color:#cfe9ff; }
+    details.sub .subcontent{ padding:0 10px 8px 12px; font-size:13px; }
+
+    /* 悬停光效 */
+    details.card::before{ content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; background: radial-gradient(600px 120px at var(--mx,50%) var(--my,0%), rgba(106,230,255,.15), transparent 60%); opacity:.0; transition:.25s opacity; }
+    details.card:hover::before{ opacity:1 }
+
+    /* 要点回顾 */
+    .recap{ margin-top:14px; padding:12px 14px; border-radius:12px; background:linear-gradient(180deg, rgba(106,230,255,.08), rgba(106,230,255,.03)); border:1px solid rgba(106,230,255,.2); }
+    .recap h3{ margin:0 0 8px; font-size:14px; color:#cfe9ff }
+    .recap ul{ margin:0; padding-left:18px; color:var(--muted); font-size:13px; line-height:1.6 }
+
+    /* 悬浮控件：本章展开/收起 */
+    .float-ctrl{ position:fixed; right:18px; bottom:18px; z-index:50; display:flex; flex-direction:column; gap:8px; }
+    .float-ctrl button{ width:42px; height:42px; border-radius:50%; border:1px solid rgba(255,255,255,.18); background:rgba(13,20,32,.8); color:var(--text); cursor:pointer; box-shadow: var(--shadow); backdrop-filter: blur(10px); }
+    .float-ctrl button:hover{ border-color: rgba(106,230,255,.35); box-shadow: 0 10px 30px rgba(106,230,255,.2); }
+    .float-ctrl .lbl{ position:absolute; right:48px; top:50%; transform:translateY(-50%); background:rgba(13,20,32,.85); border:1px solid rgba(255,255,255,.14); border-radius:10px; padding:4px 8px; font-size:12px; color:#cfe9ff; opacity:0; pointer-events:none; transition:.2s }
+    .float-ctrl button:hover .lbl{ opacity:1 }
+
+    @media (max-width:1000px){ .app{ grid-template-columns: 1fr; grid-template-rows:64px auto 1fr; grid-template-areas:"topbar" "sidebar" "main"; } .sidebar{ max-height:320px; } }
+  </style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand"><div class="logo"></div><div>AI 学科依赖 · 互动导引</div></div>
+    </div>
+
+    <aside class="sidebar">
+      <nav class="nav" id="nav">
+        <a href="#math" data-target="math">① 数学基础</a>
+        <a href="#cs" data-target="cs">② 计算机科学</a>
+        <a href="#cogsci" data-target="cogsci">③ 认知与生命科学</a>
+        <a href="#physics" data-target="physics">④ 物理与工程</a>
+        <a href="#philo" data-target="philo">⑤ 哲学与逻辑</a>
+        <a href="#econ" data-target="econ">⑥ 经济与博弈</a>
+        <a href="#branches" data-target="branches">⑦ AI 分支所需</a>
+      </nav>
+    </aside>
+
+    <main class="main" id="main">
+      <div class="hero">
+        <h1>人工智能学科依赖关系详解</h1>
+        <div class="hint">深色 · 极简 · 知识地图 + 手风琴</div>
+      </div>
+
+      <!-- 1. 数学基础 -->
+      <section id="math">
+        <h2>一、AI 学科的数学基础（必备核心）</h2>
+        <div class="grid">
+          <details class="card" open>
+            <summary><span class="title">1.1 线性代数</span><span class="hint">矩阵 / 特征值 / SVD / 线性空间</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>1.1.1 矩阵运算</summary>
+                <div class="subcontent"><p>神经网络以矩阵加权组合输入；图像可视为像素矩阵，矩阵乘法与卷积提取特征。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.1.2 特征值分解（PCA）</summary>
+                <div class="subcontent"><p>找出数据最大方差方向，实现降维与主模式提取。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.1.3 奇异值分解（SVD）</summary>
+                <div class="subcontent"><p>将复杂矩阵拆成 UΣVᵀ；推荐系统中用于潜在因子挖掘。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.1.4 线性空间与词向量</summary>
+                <div class="subcontent"><p>高维向量几何表达语义相似与类比：“国王−男人+女人≈王后”。</p></div>
+              </details>
+            </div>
+          </details>
+
+          <details class="card">
+            <summary><span class="title">1.2 微积分</span><span class="hint">多元微分 / PDE / 变分法 / 测度论</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>1.2.1 多元微分与梯度下降</summary>
+                <div class="subcontent"><p>在“误差地形”上沿梯度寻找极小值，是学习的基本机制。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.2.2 偏微分方程（PDE）</summary>
+                <div class="subcontent"><p>刻画连续时间动态，如股价、机器人轨迹等。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.2.3 变分法与 VAE</summary>
+                <div class="subcontent"><p>在生成质量与分布约束间求极值，支撑变分推断。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.2.4 测度论</summary>
+                <div class="subcontent"><p>连续概率分布与积分运算的严格基础。</p></div>
+              </details>
+            </div>
+          </details>
+
+          <details class="card">
+            <summary><span class="title">1.3 概率论与统计学 + 信息论</span><span class="hint">贝叶斯 / 检验 / 多元 / 序列 / 熵/互信息/KL</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>1.3.1 贝叶斯推理</summary>
+                <div class="subcontent"><p>新证据到来时更新信念；贝叶斯网络用于不确定环境（如诊断）。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.3.2 假设检验</summary>
+                <div class="subcontent"><p>判定改进是否显著优于基线，避免偶然波动误导。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.3.3 多元统计</summary>
+                <div class="subcontent"><p>分析高维变量关系与相关结构。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.3.4 时间序列</summary>
+                <div class="subcontent"><p>LSTM 等模型捕获长期依赖以预测趋势。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.3.5 信息论</summary>
+                <div class="subcontent"><p>熵、互信息、KL 散度量化不确定性与分布差异。</p></div>
+              </details>
+            </div>
+          </details>
+
+          <details class="card">
+            <summary><span class="title">1.4 离散数学与逻辑</span><span class="hint">组合 · 图论 · 命题/谓词/模态/非单调</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>1.4.1 组合数学</summary>
+                <div class="subcontent"><p>估算搜索空间（如围棋≈10^170），指导策略设计与剪枝。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.4.2 图论</summary>
+                <div class="subcontent"><p>图作为社交、知识图谱、神经网络的统一抽象；最短路、网络流、社区检测等核心算法。</p></div>
+              </details>
+              <details class="sub">
+                <summary>1.4.3 数理逻辑</summary>
+                <div class="subcontent"><p>命题/谓词用于形式推理；模态处理“必然/可能/知道”；非单调允许在新证据下撤回结论。</p></div>
+              </details>
+            </div>
+          </details>
+        </div>
+        <div class="recap"><h3>要点回顾 · 数学基础</h3><ul>
+          <li>线性代数与微积分构成训练与表示的算子层；</li>
+          <li>概率与信息论统一“不确定性”的度量与优化目标；</li>
+          <li>离散数学与逻辑提供可计算结构与推理规约。</li>
+        </ul></div>
+      </section>
+
+      <!-- 2. 计算机科学基础 -->
+      <section id="cs">
+        <h2>二、计算机科学基础（学科根基）</h2>
+        <div class="grid">
+          <details class="card" open>
+            <summary><span class="title">2.1 算法设计与分析</span><span class="hint">时间/空间复杂度 · 近似 · 在线</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>2.1.1 时间复杂度</summary>
+                <div class="subcontent"><p>O(n²) vs O(n log n) 决定可扩展性与可用性。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.1.2 空间复杂度</summary>
+                <div class="subcontent"><p>梯度检查点、混合精度、张量并行等控制显存与内存。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.1.3 近似算法</summary>
+                <div class="subcontent"><p>NP 难问题的实用求解路径（TSP、图着色等）。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.1.4 在线算法</summary>
+                <div class="subcontent"><p>未知未来的流式决策（实时推荐、流挖掘）。</p></div>
+              </details>
+            </div>
+          </details>
+
+          <details class="card">
+            <summary><span class="title">2.2 计算复杂性理论</span><span class="hint">P vs NP · 参数化 · 量子复杂度</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>2.2.1 P vs NP</summary>
+                <div class="subcontent"><p>若 P=NP，普遍高效求解将改变 AI 的问题版图。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.2.2 参数化复杂度</summary>
+                <div class="subcontent"><p>在特定参数小的情形实现 FPT 算法。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.2.3 量子复杂度</summary>
+                <div class="subcontent"><p>Shor/Grover 等暗示潜在指数级加速；量子机器学习兴起。</p></div>
+              </details>
+            </div>
+          </details>
+
+          <details class="card">
+            <summary><span class="title">2.3 可计算性理论</span><span class="hint">图灵机 · 递归函数 · 计算等价性</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>2.3.1 图灵机模型</summary>
+                <div class="subcontent"><p>界定“可计算”的边界条件。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.3.2 递归函数与 λ 演算</summary>
+                <div class="subcontent"><p>与图灵机等价，奠定计算理论统一性。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.3.3 计算等价性</summary>
+                <div class="subcontent"><p>多范式同等表达力，为新计算范式提供基线。</p></div>
+              </details>
+            </div>
+          </details>
+
+          <details class="card">
+            <summary><span class="title">2.4 系统与工程</span><span class="hint">数据结构 · 数据库 · 分布式/并行 · MLOps</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>2.4.1 数据结构</summary>
+                <div class="subcontent"><p>哈希表、树、图等支撑高效存取与检索。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.4.2 数据库系统</summary>
+                <div class="subcontent"><p>分布式/NoSQL/向量数据库支撑规模化数据与检索。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.4.3 分布式与并行</summary>
+                <div class="subcontent"><p>MapReduce、参数服务器、数据/张量并行、联邦学习。</p></div>
+              </details>
+              <details class="sub">
+                <summary>2.4.4 软件工程与 MLOps</summary>
+                <div class="subcontent"><p>版本、数据/模型谱系、CI/CD、监控与回滚。</p></div>
+              </details>
+            </div>
+          </details>
+        </div>
+        <div class="recap"><h3>要点回顾 · 计算机科学</h3><ul>
+          <li>算法/复杂性界定可行性边界，直接决定系统上限；</li>
+          <li>系统工程确保规模化可运行、可复现、可维护。</li>
+        </ul></div>
+      </section>
+
+      <!-- 3. 认知与生命科学 -->
+      <section id="cogsci">
+        <h2>三、认知与生命科学（灵感源泉）</h2>
+        <div class="grid">
+          <details class="card" open>
+            <summary><span class="title">3.1 神经科学 · 计算神经科学</span><span class="hint">神经元 · 拓扑 · 可塑性 · 编码</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>3.1.1 神经元建模</summary>
+                <div class="subcontent"><p>人工神经元以加权求和+非线性激活抽象生物神经元。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.1.2 网络连接模式</summary>
+                <div class="subcontent"><p>小世界/无标度拓扑启发深度网络结构设计与稀疏连接。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.1.3 学习与可塑性</summary>
+                <div class="subcontent"><p>Hebbian 规则与突触可塑性为学习机制提供生物学隐喻。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.1.4 信息编码</summary>
+                <div class="subcontent"><p>稀疏/分布式编码影响特征可分性与鲁棒性。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">3.2 神经科学 · 认知神经科学</span><span class="hint">视觉 · 语言 · 记忆/注意 · 决策</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>3.2.1 视觉感知机制</summary>
+                <div class="subcontent"><p>自边缘到物体的层次处理对应 CNN 的层级感受野。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.2.2 语言处理机制</summary>
+                <div class="subcontent"><p>Broca/Wernicke 分工启发编码器-解码器与双流模型。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.2.3 记忆与注意</summary>
+                <div class="subcontent"><p>工作记忆容量与选择性注意→注意力机制与记忆网络。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.2.4 决策过程</summary>
+                <div class="subcontent"><p>前额皮层与奖惩回路对应强化学习与多目标优化。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">3.3 心理学 · 认知心理学</span><span class="hint">信息处理 · 记忆 · 学习 · 启发式/类比</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>3.3.1 信息处理模型</summary>
+                <div class="subcontent"><p>输入-处理-输出的计算隐喻为认知架构提供范式。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.3.2 记忆模型</summary>
+                <div class="subcontent"><p>短/长/工作记忆→LSTM/记忆网络等结构。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.3.3 学习理论</summary>
+                <div class="subcontent"><p>行为主义的强化学习与认知主义的知识建构并行影响 ML。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.3.4 问题求解</summary>
+                <div class="subcontent"><p>启发式与类比推理→启发式搜索与基于案例的推理。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.3.5 发展心理学</summary>
+                <div class="subcontent"><p>阶段性发展→课程学习、元学习。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.3.6 社会心理学</summary>
+                <div class="subcontent"><p>群体行为/从众→多智能体系统的社会动力学。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.3.7 实验心理学</summary>
+                <div class="subcontent"><p>实验设计与统计推断→AI 系统评估的科学方法。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">3.4 语言学</span><span class="hint">语音/形态/句法/语义/语用 · 形式/语料/心理语言学</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>3.4.1 语音学</summary>
+                <div class="subcontent"><p>语音产生/传播/感知模型支撑 ASR 的声学特征。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.4.2 形态学</summary>
+                <div class="subcontent"><p>词根/词缀结构→中文分词、词干提取等。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.4.3 句法学</summary>
+                <div class="subcontent"><p>句法树与依存关系→解析与结构化理解。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.4.4 语义学</summary>
+                <div class="subcontent"><p>语义角色标注与语义解析→深层意义建模。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.4.5 语用学</summary>
+                <div class="subcontent"><p>语境、含意、礼貌原则→对话系统的语境依赖。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.4.6 形式语法</summary>
+                <div class="subcontent"><p>CFG/转换语法→解析器与生成器设计。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.4.7 语料库语言学</summary>
+                <div class="subcontent"><p>大规模真实数据→统计语言模型与评测基准。</p></div>
+              </details>
+              <details class="sub">
+                <summary>3.4.8 心理语言学</summary>
+                <div class="subcontent"><p>习得与处理机制→数据驱动模型的认知参照。</p></div>
+              </details>
+            </div>
+          </details>
+        </div>
+        <div class="recap"><h3>要点回顾 · 认知与生命</h3><ul>
+          <li>大脑结构与认知机制直接映射到神经网络与注意力设计；</li>
+          <li>心理与语言科学提供数据/模型/评估三方面方法论。</li>
+        </ul></div>
+      </section>
+
+      <!-- 4. 物理与工程学 -->
+      <section id="physics">
+        <h2>四、物理学与工程学（方法借鉴）</h2>
+        <div class="grid">
+          <details class="card" open>
+            <summary><span class="title">4.1 统计物理学</span><span class="hint">玻尔兹曼 · 相变 · 随机过程 · 非平衡</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>4.1.1 玻尔兹曼分布</summary>
+                <div class="subcontent"><p>能量模型/受限玻尔兹曼机以能量函数定义分布。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.1.2 相变理论</summary>
+                <div class="subcontent"><p>训练中临界现象（梯度消失/爆炸）类比相变。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.1.3 随机过程</summary>
+                <div class="subcontent"><p>马尔可夫链/布朗运动；MDP 为 RL 的数学框架。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.1.4 非平衡态热力学</summary>
+                <div class="subcontent"><p>学习过程是远离平衡的自组织动力学。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">4.2 量子物理学</span><span class="hint">量子力学 · 量子信息论 · 量子统计</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>4.2.1 量子力学</summary>
+                <div class="subcontent"><p>叠加与纠缠提供量子并行性与新计算范式。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.2.2 量子信息论</summary>
+                <div class="subcontent"><p>量子比特/门/通道与代表性算法（Shor/Grover）。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.2.3 量子统计</summary>
+                <div class="subcontent"><p>玻色/费米统计启发量子神经网络结构。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">4.3 复杂系统理论</span><span class="hint">自组织 · 涌现 · 网络科学</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>4.3.1 自组织</summary>
+                <div class="subcontent"><p>无监督聚类/降维体现从数据中自发形成结构。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.3.2 涌现现象</summary>
+                <div class="subcontent"><p>整体性质非线性涌现：深度表示与群体智能。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.3.3 网络科学</summary>
+                <div class="subcontent"><p>拓扑（度分布/社团）与动力学（扩散/同步）工具箱。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">4.4 控制论与系统论</span><span class="hint">反馈 · 最优/自适应/鲁棒 · 稳定性</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>4.4.1 反馈控制</summary>
+                <div class="subcontent"><p>以误差信号调节输入，闭环稳定。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.4.2 最优控制</summary>
+                <div class="subcontent"><p>动态规划求最优策略，与强化学习紧密相关。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.4.3 自适应控制</summary>
+                <div class="subcontent"><p>参数随环境漂移更新，在线学习的工程对应。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.4.4 鲁棒控制</summary>
+                <div class="subcontent"><p>干扰/不确定性下维持性能，对抗鲁棒性平行议题。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.4.5 系统建模</summary>
+                <div class="subcontent"><p>环境/对象的数学描述，决定 RL 模型的有效性。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.4.6 稳定性分析</summary>
+                <div class="subcontent"><p>收敛性与轨道稳定性（GAN 训练尤为相关）。</p></div>
+              </details>
+              <details class="sub">
+                <summary>4.4.7 系统优化</summary>
+                <div class="subcontent"><p>超参优化与神经架构搜索视作约束优化。</p></div>
+              </details>
+            </div>
+          </details>
+        </div>
+        <div class="recap"><h3>要点回顾 · 物理与工程</h3><ul>
+          <li>统计物理与控制论为能量/决策/稳定性提供统一语言；</li>
+          <li>复杂系统视角解释深度学习中的“涌现”现象。</li>
+        </ul></div>
+      </section>
+
+      <!-- 5. 哲学与逻辑学 -->
+      <section id="philo">
+        <h2>五、哲学与逻辑学（理论反思）</h2>
+        <div class="grid">
+          <details class="card" open>
+            <summary><span class="title">5.1 心智哲学</span><span class="hint">计算主义 · 联结主义 · 具身 · 意识</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>5.1.1 计算主义</summary>
+                <div class="subcontent"><p>思维可还原为符号操作，符号 AI 的哲学根基。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.1.2 联结主义</summary>
+                <div class="subcontent"><p>分布式表示与并行处理，神经网络的哲学取向。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.1.3 具身认知</summary>
+                <div class="subcontent"><p>认知依赖身体与环境，机器人强调与物理交互。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.1.4 意识理论</summary>
+                <div class="subcontent"><p>探讨人工意识与主观体验的可实现性与判据。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">5.2 认识论</span><span class="hint">归纳 · 溯因 · 表示 · 不确定</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>5.2.1 归纳推理</summary>
+                <div class="subcontent"><p>从样本到一般规律，机器学习的核心逻辑。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.2.2 溯因推理</summary>
+                <div class="subcontent"><p>最佳解释推理→可解释性 AI 的理据之一。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.2.3 知识表示论</summary>
+                <div class="subcontent"><p>图谱/向量/符号三系→不同的可计算表征观。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.2.4 不确定性</summary>
+                <div class="subcontent"><p>概率推理与模糊逻辑处理信息不完备性。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">5.3 伦理学</span><span class="hint">后果/义务/德性 · 应用伦理</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>5.3.1 后果主义</summary>
+                <div class="subcontent"><p>效用最大化与奖励设计的伦理外化。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.3.2 义务论</summary>
+                <div class="subcontent"><p>规则与约束独立于结果，安全/合规模块的基础。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.3.3 德性伦理</summary>
+                <div class="subcontent"><p>强调系统“品格”如诚实/公正，价值对齐议题。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.3.4 应用伦理</summary>
+                <div class="subcontent"><p>偏见、隐私、责任归属等具体治理框架。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">5.4 逻辑学</span><span class="hint">经典 · 多值 · 相干 · 时序 · 认知</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>5.4.1 经典逻辑</summary>
+                <div class="subcontent"><p>形式化推理与定理证明/专家系统的核心。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.4.2 多值逻辑</summary>
+                <div class="subcontent"><p>处理模糊概念（“年轻/高”），对应模糊控制。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.4.3 相干逻辑</summary>
+                <div class="subcontent"><p>在不一致信息下避免爆炸原理，维持可推断性。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.4.4 时序逻辑</summary>
+                <div class="subcontent"><p>时间约束与动态系统验证。</p></div>
+              </details>
+              <details class="sub">
+                <summary>5.4.5 认知逻辑</summary>
+                <div class="subcontent"><p>建模知识/信念，用于多智能体的心智状态推理。</p></div>
+              </details>
+            </div>
+          </details>
+        </div>
+        <div class="recap"><h3>要点回顾 · 哲学与逻辑</h3><ul>
+          <li>哲学为 AI 的“何以可能”提供解释框架；</li>
+          <li>逻辑为形式推理与验证提供工具箱。</li>
+        </ul></div>
+      </section>
+
+      <!-- 6. 经济学与博弈论 -->
+      <section id="econ">
+        <h2>六、经济学与博弈论（决策理论）</h2>
+        <div class="grid">
+          <details class="card" open>
+            <summary><span class="title">6.1 决策理论</span><span class="hint">效用 · 前景 · 有限理性</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>6.1.1 效用理论</summary>
+                <div class="subcontent"><p>奖励=效用函数，目标为期望累积回报最大化。</p></div>
+              </details>
+              <details class="sub">
+                <summary>6.1.2 前景理论</summary>
+                <div class="subcontent"><p>风险厌恶/寻求与参照点效应→风险敏感学习。</p></div>
+              </details>
+              <details class="sub">
+                <summary>6.1.3 有限理性</summary>
+                <div class="subcontent"><p>计算/认知限制→启发式与近似算法正当性。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">6.2 博弈论</span><span class="hint">纳什 · 机制 · 演化 · 合作</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>6.2.1 纳什均衡</summary>
+                <div class="subcontent"><p>每个体无利于单边偏离的稳定点，多智能体 RL 目标之一。</p></div>
+              </details>
+              <details class="sub">
+                <summary>6.2.2 机制设计</summary>
+                <div class="subcontent"><p>通过规则使个体理性实现系统目标（激励相容）。</p></div>
+              </details>
+              <details class="sub">
+                <summary>6.2.3 演化博弈</summary>
+                <div class="subcontent"><p>策略频率随时间演化，复制子动力学等。</p></div>
+              </details>
+              <details class="sub">
+                <summary>6.2.4 合作博弈</summary>
+                <div class="subcontent"><p>联盟形成与收益分配（Shapley 值等）。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">6.3 计量经济学</span><span class="hint">回归 · 时间序列 · 因果 · 实验</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>6.3.1 回归分析</summary>
+                <div class="subcontent"><p>线性/逻辑回归建模变量关系与概率。</p></div>
+              </details>
+              <details class="sub">
+                <summary>6.3.2 时间序列分析</summary>
+                <div class="subcontent"><p>ARIMA/LSTM 处理时序依赖与预测。</p></div>
+              </details>
+              <details class="sub">
+                <summary>6.3.3 因果推断</summary>
+                <div class="subcontent"><p>混杂控制与图模型，区分因果与相关。</p></div>
+              </details>
+              <details class="sub">
+                <summary>6.3.4 实验设计</summary>
+                <div class="subcontent"><p>A/B 与 RCT 作为评估/归因的金标准。</p></div>
+              </details>
+            </div>
+          </details>
+        </div>
+        <div class="recap"><h3>要点回顾 · 经济与博弈</h3><ul>
+          <li>效用与博弈为多主体决策与机制提供可操作框架；</li>
+          <li>计量方法是评估与归因的“金标准”。</li>
+        </ul></div>
+      </section>
+
+      <!-- 7. AI 分支所需 -->
+      <section id="branches">
+        <h2>七、不同 AI 分支的特殊学科需求</h2>
+        <div class="grid">
+          <details class="card" open>
+            <summary><span class="title">7.1 机器学习理论</span><span class="hint">实分析 · 泛函(RKHS) · 凸优化 · PAC/VC/Rademacher</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>7.1.1 实分析</summary>
+                <div class="subcontent"><p>极限、连续与可测性，收敛性证明的基石。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.1.2 泛函分析</summary>
+                <div class="subcontent"><p>无穷维空间与 RKHS，核方法理论基础。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.1.3 凸优化</summary>
+                <div class="subcontent"><p>KKT 条件与对偶性，指导优化器与约束处理。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.1.4 学习理论</summary>
+                <div class="subcontent"><p>PAC、VC 维与 Rademacher 复杂度刻画泛化。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">7.2 计算机视觉</span><span class="hint">信号处理 · 图像处理 · 几何 · 光学</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>7.2.1 信号处理</summary>
+                <div class="subcontent"><p>傅里叶变换、滤波、频域分析用于预处理。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.2.2 图像处理</summary>
+                <div class="subcontent"><p>形态学（腐蚀/膨胀）、Canny 等边缘检测。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.2.3 几何学</summary>
+                <div class="subcontent"><p>投影几何与多视几何→3D 重建与校正。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.2.4 光学</summary>
+                <div class="subcontent"><p>成像原理与光照模型→渲染与场景理解。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">7.3 自然语言处理</span><span class="hint">形式语言 · 信息检索 · 语言学理论</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>7.3.1 形式语言理论</summary>
+                <div class="subcontent"><p>正则/CFG 等为解析与生成提供数学框架。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.3.2 信息检索</summary>
+                <div class="subcontent"><p>倒排索引、TF‑IDF、BM25 等相关性评分。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.3.3 语言学理论</summary>
+                <div class="subcontent"><p>转换生成/构式语法指导句法/语义建模。</p></div>
+              </details>
+            </div>
+          </details>
+          <details class="card">
+            <summary><span class="title">7.4 机器人学</span><span class="hint">力学 · 控制工程 · 传感器与融合</span></summary>
+            <div class="content">
+              <details class="sub" open>
+                <summary>7.4.1 经典力学</summary>
+                <div class="subcontent"><p>运动学与动力学：位姿、力矩与轨迹。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.4.2 控制工程</summary>
+                <div class="subcontent"><p>PID、状态空间、观测器与反馈线性化。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.4.3 传感器技术</summary>
+                <div class="subcontent"><p>激光雷达、摄像头、IMU 的噪声模型与标定。</p></div>
+              </details>
+              <details class="sub">
+                <summary>7.4.4 传感器融合</summary>
+                <div class="subcontent"><p>卡尔曼/粒子滤波融合多源观测，鲁棒定位。</p></div>
+              </details>
+            </div>
+          </details>
+        </div>
+        <div class="recap"><h3>要点回顾 · 分支需求</h3><ul>
+          <li>不同分支映射到各自的数学/工程“最小必需集”；</li>
+          <li>交叉验证能力矩阵，有助于课程定制与自检。</li>
+        </ul></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 悬浮控件：本章展开/收起 -->
+  <div class="float-ctrl" id="floatCtrl">
+    <button id="btnExpand" title="本章全部展开"><span class="lbl">本章展开</span>＋</button>
+    <button id="btnCollapse" title="本章全部收起"><span class="lbl">本章收起</span>－</button>
+  </div>
+
+  <script>
+    // 粒子背景
+    const canvas = document.getElementById('bg');
+    const ctx = canvas.getContext('2d');
+    let W,H,particles=[]; const N=110;
+    function resize(){ W=canvas.width=innerWidth; H=canvas.height=innerHeight }
+    addEventListener('resize',resize); resize();
+    function init(){ particles = Array.from({length:N},()=>({ x:Math.random()*W, y:Math.random()*H, vx:(Math.random()-.5)*0.55, vy:(Math.random()-.5)*0.55, r:Math.random()*2+0.6 })); }
+    init();
+    (function loop(){ ctx.clearRect(0,0,W,H); for(let i=0;i<N;i++){ for(let j=i+1;j<N;j++){ const a=particles[i], b=particles[j]; const d=Math.hypot(a.x-b.x,a.y-b.y); if(d<120){ ctx.globalAlpha=(120-d)/600; ctx.strokeStyle='#6ae6ff'; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); } } } ctx.globalAlpha=1; particles.forEach(p=>{ ctx.beginPath(); ctx.fillStyle='rgba(138,125,255,.9)'; ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); p.x+=p.vx; p.y+=p.vy; if(p.x<0||p.x>W) p.vx*=-1; if(p.y<0||p.y>H) p.vy*=-1; }); requestAnimationFrame(loop); })();
+
+    // 侧栏定位高亮 & 平滑滚动
+    const nav = document.getElementById('nav');
+    const anchors = [...nav.querySelectorAll('a')];
+    const sections = anchors.map(a=> document.getElementById(a.dataset.target));
+    const main = document.querySelector('.main');
+    let currentSectionId = sections[0]?.id || '';
+    const io = new IntersectionObserver((entries)=>{
+      entries.forEach(e=>{
+        if(e.isIntersecting){
+          anchors.forEach(a=> a.classList.toggle('active', a.dataset.target===e.target.id));
+          currentSectionId = e.target.id;
+        }
+      })
+    }, { root: main, threshold: .3 });
+    sections.forEach(s=> io.observe(s));
+    anchors.forEach(a=> a.addEventListener('click', (ev)=>{ ev.preventDefault(); document.getElementById(a.dataset.target).scrollIntoView({ behavior:'smooth', block:'start' }); }));
+
+    // 卡片光效鼠标跟随
+    document.querySelectorAll('details.card').forEach(card=>{
+      card.addEventListener('mousemove', (e)=>{ const r=card.getBoundingClientRect(); ca

@@ -1,0 +1,149 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>图灵机模拟器</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; padding:16px; }
+  .tape-wrap { position:relative; width:min(640px,94%); overflow:hidden; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+  .tape { display:flex; transform:translateX(0); transition:transform .28s cubic-bezier(.3,.8,.3,1); }
+  .cell { width:52px; height:60px; border-right:1px solid var(--border); display:grid; place-items:center; font-family:var(--mono); font-size:20px; flex-shrink:0; position:relative; }
+  .cell.blank { color:var(--muted); }
+  .cell.head::after { content:"▲"; position:absolute; top:-24px; color:var(--accent); font-size:14px; }
+  .cell.head { box-shadow:inset 0 -4px 0 var(--accent); }
+  .statebox { display:flex; gap:14px; align-items:center; }
+  .statebox .st { padding:8px 18px; border-radius:10px; border:2px solid var(--accent); color:var(--accent); font-family:var(--mono); font-weight:700; }
+  .stateline { font-family:var(--mono); font-size:12.5px; color:var(--muted); max-width:640px; text-align:center; min-height:2.4em; line-height:1.7; }
+  .stateline b { color:var(--accent); }
+  .progress-note { font-size:12px; color:var(--muted); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">图灵机模拟器</span><span class="s">选择一个程序，看读写头在纸带上移动、按状态表改写符号——1936 年的"万能机器"就在眼前</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="tape-wrap"><div class="tape" id="tape"></div></div>
+    <div class="statebox"><span style="font-size:12px;color:var(--muted)">当前状态</span><span class="st" id="state">—</span></div>
+    <div class="stateline" id="line">选择右侧程序并按「运行」</div>
+    <div class="progress-note" id="steps"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">程序库</div>
+    <div id="progs"></div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn sm" id="run">运行 ▶</button>
+      <button class="btn sm ghost" id="step">单步</button>
+      <button class="btn sm ghost" id="reset">重置</button>
+    </div>
+    <div class="ctl"><label><span>速度</span><b id="spdV"></b></label><input type="range" id="spd" min="1" max="10" value="5"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      每一步只做三件事：<b>读符号 → 查状态表 → 写符号/移动/换状态</b>。就这么机械的循环，原则上能执行任何可计算的任务——这就是"通用性"。
+    </div>
+  </div>
+</div>
+<script type="module">
+/* 程序定义：rules[state][read] = {w, m, s}  写 w、移动 m(±1)、转状态 s；halt 停机 */
+const PROGRAMS = [
+  {
+    name: '① 二进制加一',
+    desc: '在二进制数末尾加一：从右往左遇 0 写 1 停，遇 1 写 0 进位。',
+    tape: '1011', blank: '0',
+    rules: {
+      q0: { '0': { w: '0', m: 1, s: 'q0' }, '1': { w: '1', m: 1, s: 'q0' } },  // 右移到末尾
+      q1: { '0': { w: '1', m: -1, s: 'halt' }, '1': { w: '0', m: -1, s: 'q1' } }, // 加一
+    }, start: 'q0', toEnd: true
+  },
+  {
+    name: '② 翻转比特',
+    desc: '把 0 变 1、1 变 0，扫完整个串停机。',
+    tape: '1101001', blank: '#',
+    rules: {
+      q0: { '0': { w: '1', m: 1, s: 'q0' }, '1': { w: '0', m: 1, s: 'q0' }, '#': { w: '#', m: 0, s: 'halt' } },
+    }, start: 'q0'
+  },
+  {
+    name: '③ 回文检测 (0/1)',
+    desc: '首尾配对消去：每次读首字符，找到串尾配对则双双变 #，回到新首……全消去则接受。',
+    tape: '0110', blank: '#',
+    rules: {
+      q0: { '0': { w: '#', m: 1, s: 'find0' }, '1': { w: '#', m: 1, s: 'find1' }, '#': { w: '#', m: 0, s: 'halt-accept' } },
+      find0: { '0': { w: '0', m: 1, s: 'find0' }, '1': { w: '1', m: 1, s: 'find0' }, '#': { w: '#', m: -1, s: 'chk0' } },
+      find1: { '0': { w: '0', m: 1, s: 'find1' }, '1': { w: '1', m: 1, s: 'find1' }, '#': { w: '#', m: -1, s: 'chk1' } },
+      chk0: { '0': { w: '#', m: -1, s: 'back' }, '1': { w: '1', m: 0, s: 'halt-reject' }, '#': { w: '#', m: 0, s: 'halt-accept' } },
+      chk1: { '1': { w: '#', m: -1, s: 'back' }, '0': { w: '0', m: 0, s: 'halt-reject' }, '#': { w: '#', m: 0, s: 'halt-accept' } },
+      back: { '0': { w: '0', m: -1, s: 'back' }, '1': { w: '1', m: -1, s: 'back' }, '#': { w: '#', m: 1, s: 'q0' } },
+    }, start: 'q0'
+  },
+];
+const tapeEl = document.getElementById('tape');
+let prog = null, cells = [], pos = 0, state = '', timer = null, nSteps = 0, offset = 0;
+
+function load(p) {
+  prog = p;
+  cells = ('####' + p.tape + '##########').split('').map(c => ({ v: c }));
+  pos = 4; nSteps = 0; state = p.start;
+  if (p.toEnd) { /* 加一程序：q0 阶段先扫到末尾 */ }
+  render();
+  document.getElementById('line').innerHTML = `程序：<b>${p.name}</b><br>${p.desc}`;
+  document.getElementById('steps').textContent = '';
+}
+function render() {
+  tapeEl.innerHTML = '';
+  tapeEl.style.transform = `translateX(${offset}px)`;
+  cells.forEach((c, i) => {
+    const d = document.createElement('div');
+    d.className = 'cell' + (c.v === '#' ? ' blank' : '') + (i === pos ? ' head' : '');
+    d.textContent = c.v === '#' ? '␣' : c.v;
+    tapeEl.append(d);
+  });
+  const st = document.getElementById('state');
+  st.textContent = state;
+  st.style.borderColor = state.startsWith('halt') ? (state.includes('accept') ? 'var(--ok)' : 'var(--err)') : 'var(--accent)';
+  st.style.color = st.style.borderColor;
+  document.getElementById('steps').textContent = `已执行 ${nSteps} 步`;
+  /* 居中读写头 */
+  const wrapW = tapeEl.parentElement.getBoundingClientRect().width;
+  offset = wrapW / 2 - (pos + 0.5) * 52;
+  offset = Math.min(0, offset);
+  tapeEl.style.transform = `translateX(${offset}px)`;
+}
+function step() {
+  if (!prog || state.startsWith('halt')) return false;
+  const cell = cells[pos];
+  const read = cell.v;
+  const rule = prog.rules[state]?.[read];
+  if (!rule) { state = 'halt-error'; render(); document.getElementById('line').innerHTML = `<b style="color:var(--err)">卡住：状态 ${state} 读到 "${read}" 无规则。</b>`; return false; }
+  const detail = `状态 <b>${state}</b> 读 "${read === '#' ? '空' : read}" → 写 "${rule.w === '#' ? '空' : rule.w}"、${rule.m > 0 ? '右移' : rule.m < 0 ? '左移' : '不动'}、转 <b>${rule.s}</b>`;
+  cell.v = rule.w;
+  pos += rule.m;
+  if (pos < 0) { cells.unshift({ v: prog.blank }); pos = 0; }
+  if (pos >= cells.length) cells.push({ v: prog.blank });
+  state = rule.s;
+  nSteps++;
+  render();
+  document.getElementById('line').innerHTML = detail + (state.startsWith('halt') ? `<br><b style="color:${state.includes('accept') ? 'var(--ok)' : 'var(--text)'}">${state === 'halt-accept' ? '✔ 接受：是回文' : state === 'halt-reject' ? '✘ 拒绝：不是回文' : '■ 停机'}</b>` : '');
+  return !state.startsWith('halt');
+}
+const progs = document.getElementById('progs');
+PROGRAMS.forEach((p, i) => {
+  const b = document.createElement('button');
+  b.className = 'btn sm ghost';
+  b.style.cssText = 'display:block;width:100%;margin-bottom:8px;text-align:left';
+  b.textContent = p.name;
+  b.addEventListener('click', () => { stop(); load(p); });
+  progs.append(b);
+});
+function stop() { if (timer) { clearInterval(timer); timer = null; document.getElementById('run').textContent = '运行 ▶'; } }
+document.getElementById('run').addEventListener('click', () => {
+  if (timer) { stop(); return; }
+  if (!prog || state.startsWith('halt')) return;
+  document.getElementById('run').textContent = '暂停 ■';
+  const speed = 11 - +document.getElementById('spd').value;
+  timer = setInterval(() => { if (!step()) stop(); }, speed * 120);
+});
+document.getElementById('step').addEventListener('click', step);
+document.getElementById('reset').addEventListener('click', () => { stop(); if (prog) load(prog); });
+document.getElementById('spd').addEventListener('input', e => {
+  document.getElementById('spdV').textContent = e.target.value;
+  if (timer) { stop(); document.getElementById('run').click(); }
+});
+document.getElementById('spdV').textContent = '5';
+load(PROGRAMS[0]);
+</script>
+</body></html>

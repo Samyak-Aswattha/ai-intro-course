@@ -1,0 +1,146 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>3D 损失曲面</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<script type="importmap">{"imports":{"three":"../../assets/lib/three.module.js"}}</script>
+<style>
+  .stage { position:relative; }
+  #tip { position:absolute; left:14px; bottom:14px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 14px; font-size:12px; font-family:var(--mono); line-height:1.8; }
+</style></head><body>
+<div class="demo-head"><span class="badge">3D 场景</span><span class="t">损失曲面与梯度下降</span><span class="s">拖动旋转、滚轮缩放；投放小球看它沿梯度滚落——第三维就是"损失有多痛"</span></div>
+<div class="demo-body">
+  <div class="stage demo-stage">
+    <canvas id="c3d" class="stage-canvas"></canvas>
+    <div id="tip"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">控制台</div>
+    <div class="btn-row">
+      <button class="btn sm" id="drop">从小球当前位置开始 ▶</button>
+      <button class="btn sm ghost" id="rand">随机投球</button>
+      <button class="btn sm ghost" id="reset">复位视角</button>
+    </div>
+    <div id="ctls"></div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      曲面是模型 y = w₁x + w₂ 的 MSE 损失（对 w₁、w₂ 两轴）。碗底 = 最优参数。<br><br>
+      学习率过大 → 小球飞出山谷（发散）；曲面切到"非凸模式" → 可能滚进局部坑——<b>这就是神经网络训练的日常</b>。
+    </div>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from '../../assets/lib/OrbitControls.js';
+import { slider, brkSwitch } from '../_shared/demo.js';
+
+const canvas = document.getElementById('c3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
+cam.position.set(0, 7, 9);
+const controls = new OrbitControls(cam, canvas);
+controls.enableDamping = true;
+controls.target.set(0, 0.5, 0);
+const dark = document.documentElement.dataset.theme === 'dark';
+scene.background = new THREE.Color(dark ? 0x16140f : 0xfaf9f6);
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+const dl = new THREE.DirectionalLight(0xffffff, 0.9);
+dl.position.set(5, 10, 6);
+scene.add(dl);
+
+/* 数据（固定） */
+const DATA = (() => { const a = []; for (let i = 0; i < 12; i++) a.push([i / 12, 0.55 * i / 12 + 0.2 + (Math.sin(i * 3.7) * 0.04)]); return a; })();
+let nonconvex = false;
+function loss(w1, w2) {
+  let s = 0;
+  for (const [x, y] of DATA) { const d = (w1 * x + w2 - y); s += d * d; }
+  s /= DATA.length;
+  if (nonconvex) s += 0.22 * Math.sin(w1 * 9) + 0.22 * Math.cos(w2 * 11);
+  return s;
+}
+function grad(w1, w2) {
+  const h = 1e-4;
+  return [(loss(w1 + h, w2) - loss(w1 - h, w2)) / (2 * h), (loss(w1, w2 + h) - loss(w1, w2 - h)) / (2 * h)];
+}
+/* 曲面网格 */
+const RANGE = 2.2; /* w ∈ [-0.6, 1.6] */
+const mapW = w => (w / RANGE) * 6;
+const unmapW = p => (p / 6) * RANGE;
+const lossToY = l => Math.min(2.6, l * 3.2);
+let surf = null;
+function buildSurface() {
+  if (surf) { scene.remove(surf); surf.geometry.dispose(); surf.material.dispose(); }
+  const N = 60;
+  const geo = new THREE.PlaneGeometry(6, 6, N, N);
+  const pos = geo.attributes.position;
+  const colors = [];
+  for (let i = 0; i < pos.count; i++) {
+    const w1 = unmapW(pos.getX(i)), w2 = unmapW(pos.getY(i));
+    const l = loss(w1, w2);
+    pos.setZ(i, lossToY(l));
+    const t = Math.min(1, l / 1.4);
+    const c = new THREE.Color().setHSL(0.42 - t * 0.42, 0.75, dark ? 0.28 + t * 0.25 : 0.62 - t * 0.28);
+    colors.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.75, metalness: 0.05 });
+  surf = new THREE.Mesh(geo, mat);
+  surf.rotation.x = -Math.PI / 2;
+  scene.add(surf);
+}
+buildSurface();
+
+/* 小球与轨迹 */
+const ball = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 20), new THREE.MeshStandardMaterial({ color: 0xb4482b, emissive: 0xb4482b, emissiveIntensity: 0.4 }));
+scene.add(ball);
+const trajGeo = new THREE.BufferGeometry();
+const trajMat = new THREE.LineBasicMaterial({ color: 0xb4482b, linewidth: 2 });
+const traj = new THREE.Line(trajGeo, trajMat);
+scene.add(traj);
+let ballW = [1.45, 1.3], lr = 0.12, running = false, hist = [];
+function ballToScene() {
+  ball.position.set(mapW(ballW[0]), lossToY(loss(...ballW)) + 0.13, mapW(ballW[1]));
+  hist.push(ball.position.clone());
+  trajGeo.setFromPoints(hist);
+}
+ballToScene();
+function stepBall() {
+  const g = grad(...ballW);
+  ballW[0] -= lr * g[0];
+  ballW[1] -= lr * g[1];
+  if (Math.abs(ballW[0]) > RANGE || Math.abs(ballW[1]) > RANGE || !isFinite(ballW[0])) return false;
+  ballToScene();
+  tip.textContent = `w₁ = ${ballW[0].toFixed(4)}\nw₂ = ${ballW[1].toFixed(4)}\nloss = ${loss(...ballW).toFixed(6)}\n|∇| = ${Math.hypot(...g).toFixed(4)}`;
+  return Math.hypot(...g) > 1e-5;
+}
+document.getElementById('drop').addEventListener('click', () => { running = true; });
+document.getElementById('rand').addEventListener('click', () => {
+  ballW = [(Math.random() * 2 - 1) * (RANGE - 0.3), (Math.random() * 2 - 1) * (RANGE - 0.3)];
+  hist = []; running = true;
+});
+document.getElementById('reset').addEventListener('click', () => { cam.position.set(0, 7, 9); controls.target.set(0, 0.5, 0); });
+const ctls = document.getElementById('ctls');
+ctls.append(slider({ label: '学习率', min: 1, max: 600, value: 120, fmt: v => (v / 1000).toFixed(3), onInput: v => lr = v / 1000 }));
+const bz = document.getElementById('bz');
+bz.append(brkSwitch('切换非凸曲面（加噪声丘陵）', v => { nonconvex = v; buildSurface(); hist = []; ballToScene(); }));
+bz.append(brkSwitch('学习率爆炸（×4）', v => lr = v ? 0.5 : 0.12, false));
+
+const tip = document.getElementById('tip');
+tip.textContent = '按「随机投球」或「开始」';
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  cam.aspect = r.width / r.height;
+  cam.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas.parentElement);
+resize();
+(function animate() {
+  requestAnimationFrame(animate);
+  if (running) { let ok = true; for (let i = 0; i < 3; i++) ok = stepBall() && ok; if (!ok) running = false; }
+  controls.update();
+  renderer.render(scene, cam);
+})();
+</script>
+</body></html>

@@ -1,0 +1,118 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>RAG 透视模拟器</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:14px; gap:10px; overflow-y:auto; }
+  .qrow { display:flex; gap:8px; }
+  .qrow input { flex:1; }
+  .phases { display:flex; flex-direction:column; gap:8px; }
+  .phase { border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:10px 14px; opacity:.5; transition:all .35s; }
+  .phase.active { opacity:1; border-color:var(--c3); box-shadow:0 0 0 3px var(--m-foundations-soft, var(--accent-soft)); }
+  .phase .ph-h { display:flex; gap:8px; align-items:center; font-weight:700; font-size:13.5px; }
+  .phase .ph-h .n { width:22px; height:22px; border-radius:50%; background:var(--c3); color:#fff; display:grid; place-items:center; font-size:12px; font-family:var(--mono); }
+  .phase .body { font-size:12.5px; line-height:1.75; margin-top:6px; color:var(--muted); }
+  .phase .body b { color:var(--text); }
+  .chunks { display:flex; flex-direction:column; gap:5px; margin-top:6px; }
+  .chunk { display:flex; align-items:center; gap:8px; font-size:12px; padding:6px 10px; border-radius:8px; background:var(--surface2); border:1px solid var(--border); }
+  .chunk.hit { border-color:var(--ok); background:var(--ok-soft,#dcf0e2); }
+  .chunk .sc { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--ok); font-weight:700; }
+  .answer { border:1.5px solid var(--border); border-radius:12px; padding:12px 16px; font-size:13.5px; line-height:1.9; background:var(--surface2); }
+  .answer.noRAG { color:var(--err); }
+  .answer b { color:var(--accent); }
+</style></head><body>
+<div class="demo-head"><span class="badge">实验室</span><span class="t">RAG 透视模拟器</span><span class="s">输入问题，逐步透视检索增强生成的三阶段；开关"关掉 RAG"看同一问题如何变成幻觉</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="qrow">
+      <input id="q" value="这门课的期末考试怎么算分？" placeholder="问一个关于本课程的问题…">
+      <button class="btn" id="go">提问 ▶</button>
+    </div>
+    <div class="phases" id="phases">
+      <div class="phase" id="p1"><div class="ph-h"><span class="n">1</span>嵌入：问题变成向量</div><div class="body" id="p1b"></div></div>
+      <div class="phase" id="p2"><div class="ph-h"><span class="n">2</span>检索：在知识库里找最近邻</div><div class="body" id="p2b"></div></div>
+      <div class="phase" id="p3"><div class="ph-h"><span class="n">3</span>生成：基于资料作答</div><div class="body" id="p3b"></div></div>
+    </div>
+    <div class="answer" id="ans">按「提问」开始。</div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">模式</div>
+    <div class="break-zone" id="bz"><div class="bz-title">⚠ 故意弄坏它</div></div>
+    <div class="tabs" id="qs"></div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      知识库内置本课程 8 个文档块（大纲、考核、实验、比赛……）。<br><br>关掉 RAG：模型只能靠"参数记忆"瞎猜——看它如何<b>自信地编造</b>一个分数构成。
+    </div>
+  </div>
+</div>
+<script type="module">
+import { brkSwitch } from '../_shared/demo.js';
+const KB = [
+  { id: 'D1', t: '课程考核：平时成绩 20%（出勤+作业）+ 课堂实践 30% + 期末考试/课程论文 50%。', tags: ['考核', '期末', '分数', '考试', '成绩', '算分', '占比'] },
+  { id: 'D2', t: '课程共 48 学时（3 学分）：讲授 36 + 实践 12。四大模块：引论、通识、争锋、实战。', tags: ['学时', '学分', '模块', '课时', '安排'] },
+  { id: 'D3', t: '实践课包括：提示词工程、手搓 Agent、搭建本地知识库、部署本地大模型、神经网络编程。', tags: ['实践', '实验', 'agent', '提示词', '知识库', '部署'] },
+  { id: 'D4', t: 'AI 创作比赛：个人或 3 人内小组；提交作品 + 创作过程档案 + 3 分钟答辩；评分含概念 35%、AI 运用深度 25%、档案 20%、答辩 15%、合规 5%。', tags: ['比赛', '创作', '答辩', '档案', '评分', '小组'] },
+  { id: 'D5', t: '期中后有一次自愿参加的"图灵测试"体验活动，可获实践加分。', tags: ['图灵', '活动', '加分', '期中'] },
+  { id: 'D6', t: '参考教材：周志华《机器学习》、Goodfellow《深度学习》；推荐阅读：图灵 1950 原文、苦涩教训。', tags: ['教材', '书', '阅读', '参考'] },
+  { id: 'D7', t: '答疑渠道：每周三课后答疑、课程网站 AI 助教（24h）、FAQ 页面。', tags: ['答疑', '问题', '助教', '渠道'] },
+  { id: 'D8', t: '课程论文三选一：思想实验评析 / AI 事件分析 / 创作说明文。评分权重：论证结构 > 观点新颖 > 文采。', tags: ['论文', '期末', '选题', '写作', '答辩'] },
+];
+const QS = ['这门课的期末考试怎么算分？', '创作比赛的评分标准是什么？', '期末论文可以写什么？', '实践课都做什么？'];
+let ragOn = true;
+const overlap = (q, tags) => {
+  let s = 0;
+  tags.forEach(t => { if (q.includes(t)) s += 2; });
+  q.split('').forEach(ch => { if (tags.some(t => t.includes(ch))) s += 0.1; });
+  return s;
+};
+const wait = ms => new Promise(r => setTimeout(r, ms));
+async function ask() {
+  const q = document.getElementById('q').value.trim() || QS[0];
+  const phases = ['p1', 'p2', 'p3'].map(id => document.getElementById(id));
+  const bodies = ['p1b', 'p2b', 'p3b'].map(id => document.getElementById(id));
+  phases.forEach(p => p.classList.remove('active'));
+  const ans = document.getElementById('ans');
+  ans.textContent = '思考中…';
+  /* 阶段 1 */
+  phases[0].classList.add('active');
+  const dims = 8;
+  const qvec = Array.from({ length: dims }, (_, i) => (Math.sin(q.length * (i + 1) * 3.7) + 1) / 2);
+  bodies[0].innerHTML = `「${q}」→ [<b>${qvec.map(v => v.toFixed(2)).join(', ')}</b>]（演示用 8 维；真实为 1024+ 维）`;
+  await wait(ragOn ? 800 : 200);
+  if (!ragOn) {
+    phases[1].classList.add('active');
+    bodies[1].innerHTML = '⚠ <b>RAG 已关闭</b>：跳过检索，直接让模型"凭记忆"回答。';
+    await wait(700);
+    phases[2].classList.add('active');
+    bodies[2].innerHTML = '模型内部没有这门课的具体文件——它将从"大学课程一般如何算分"的统计分布中<b>编造</b>一个看似合理的答案。';
+    ans.className = 'answer noRAG';
+    ans.innerHTML = `🤥 <b>（无 RAG 的幻觉答案）</b>根据这门课的要求，期末考试占总成绩的 <b>40%</b>，平时作业占 <b>60%</b>，考试形式为闭卷……<br><br><span style="font-size:12px;color:var(--muted)">——数字是编的。对比打开 RAG 后的回答。</span>`;
+    return;
+  }
+  /* 阶段 2 */
+  phases[1].classList.add('active');
+  const scored = KB.map(d => ({ ...d, s: overlap(q, d.tags) })).sort((a, b) => b.s - a.s);
+  bodies[1].innerHTML = `<div class="chunks">` + scored.slice(0, 4).map((d, i) => `
+    <div class="chunk${i < 2 && d.s > 0 ? ' hit' : ''}">${d.s > 0 ? '📄' : '📄'} <span>${d.t.slice(0, 38)}…</span><span class="sc">${d.s > 0 ? '相似度 ' + Math.min(0.98, 0.55 + d.s * 0.12).toFixed(2) : '0.02'}</span></div>`).join('') + '</div>';
+  await wait(1000);
+  /* 阶段 3 */
+  phases[2].classList.add('active');
+  const hits = scored.filter(d => d.s > 0).slice(0, 2);
+  bodies[2].innerHTML = `提示词拼装：<b>「只依据以下资料回答，资料不足就说不知道。资料：${hits.map(h => h.t.slice(0, 20) + '…').join(' / ')}　问题：${q}」</b>`;
+  ans.className = 'answer';
+  if (hits.length) {
+    ans.innerHTML = `✅ <b>（有 RAG 的有据答案）</b>依据课程文件（${hits.map(h => h.id).join('、')}）：${hits[0].t}${hits[1] ? '<br>补充：' + hits[1].t : ''}<br><br><span style="font-size:12px;color:var(--muted)">——每个数字都可溯源到文档块。</span>`;
+  } else {
+    ans.innerHTML = `🤔 检索到的文档与问题相关度不足。按系统指令，我如实回答：<b>现有课程资料中没有找到相关内容</b>，建议在周三答疑时确认。<br><br><span style="font-size:12px;color:var(--muted)">——"知道自己不知道"，正是 RAG 抑制幻觉的机制。</span>`;
+  }
+}
+document.getElementById('go').addEventListener('click', ask);
+document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+const qsEl = document.getElementById('qs');
+QS.forEach(q => {
+  const b = document.createElement('button');
+  b.textContent = q.slice(0, 12) + '…';
+  b.addEventListener('click', () => { document.getElementById('q').value = q; ask(); });
+  qsEl.append(b);
+});
+document.getElementById('bz').append(brkSwitch('关闭 RAG（纯参数记忆）', v => { ragOn = !v; }));
+</script>
+</body></html>

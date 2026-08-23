@@ -1,0 +1,114 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>本地部署交互指南</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; display:flex; flex-direction:column; padding:16px; gap:14px; overflow-y:auto; }
+  .hardware { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .hw { border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:12px; }
+  .hw .k { font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .hw input { font-family:var(--mono); }
+  .verdict { padding:14px 18px; border-radius:12px; border:1.5px solid var(--ok); background:var(--ok-soft,#dcf0e2); font-size:13.5px; line-height:1.8; }
+  .verdict.warn { border-color:var(--warn); background:var(--warn-soft,#f9ecd2); }
+  .verdict b { display:block; font-size:15px; margin-bottom:4px; }
+  .models { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px; }
+  .model { border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:12px 14px; cursor:pointer; transition:all .15s; }
+  .model:hover, .model.on { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .model .mn { font-weight:700; font-size:14px; }
+  .model .ms { font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:2px; }
+  .model .need { font-size:11.5px; margin-top:6px; color:var(--c3); }
+  .cmd { font-family:var(--mono); font-size:13px; background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:10px; }
+  .cmd button { margin-left:auto; }
+  .steps4 { display:flex; flex-direction:column; gap:8px; }
+  .step4 { display:flex; gap:10px; align-items:flex-start; font-size:13px; }
+  .step4 .n { flex-shrink:0; width:22px; height:22px; border-radius:50%; background:var(--accent); color:#fff; display:grid; place-items:center; font-size:12px; font-family:var(--mono); }
+</style></head><body>
+<div class="demo-head"><span class="badge">指南</span><span class="t">本地大模型部署 · 决策机器</span><span class="s">输入你的硬件 → 实时测算能跑的模型 → 生成可复制的部署命令卡</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <div class="hardware">
+      <div class="hw"><div class="k">内存 RAM (GB)</div><input type="number" id="ram" value="16"></div>
+      <div class="hw"><div class="k">显存 VRAM (GB，无独显填 0)</div><input type="number" id="vram" value="0"></div>
+      <div class="hw"><div class="k">芯片</div><select id="chip"><option>Apple Silicon (M系列)</option><option>NVIDIA 显卡</option><option>普通 CPU</option></select></div>
+    </div>
+    <div class="verdict" id="verdict"></div>
+    <div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">推荐模型（点击选中）</div>
+      <div class="models" id="models"></div>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:700;margin:4px 0 8px">部署命令卡</div>
+      <div class="cmd" id="cmd"></div>
+    </div>
+    <div class="steps4">
+      <div class="step4"><span class="n">1</span><span>安装 Ollama：官网 <b>ollama.com</b> 下载对应系统安装包（Win/Mac 一路下一步）</span></div>
+      <div class="step4"><span class="n">2</span><span>打开终端（Mac：终端 app；Win：PowerShell），粘贴上面的命令回车，等待下载（模型文件 4–8 GB）</span></div>
+      <div class="step4"><span class="n">3</span><span>下载完自动进入对话——直接用中文聊天测试。输入 <b>/bye</b> 退出</span></div>
+      <div class="step4"><span class="n">4</span><span>进阶：Ollama 常驻后（ollama serve），在 AnythingLLM / Cherry Studio 里填 <b>http://localhost:11434</b> 即可把它当作本地大脑搭知识库</span></div>
+    </div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">为什么本地跑</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      ① <b>隐私</b>：日记、未发表稿件、他人数据不出本机<br>
+      ② <b>离线</b>：教室无网也能用<br>
+      ③ <b>自主</b>：不受停服、涨价、审查摆布<br><br>
+      模型名里的 <b>q4</b> = 4 比特量化：体积 ÷4，能力略降、速度更快——性价比甜点。
+    </div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      经验：Apple Silicon 用<b>统一内存</b>（把 RAM 拉高试试）；NVIDIA 看显存；纯 CPU 只推荐 3B 以下。
+    </div>
+  </div>
+</div>
+<script type="module">
+const MODELS = [
+  { n: 'Qwen3 4B', s: '4B · q4 · 2.6GB', need: 6, desc: '2026 主力小模型：思考模式可开关', cmd: 'ollama run qwen3:4b' },
+  { n: 'Qwen3 8B', s: '8B · q4 · 5.2GB', need: 10, desc: 'Apache 2.0，中文与 Agent 双强', cmd: 'ollama run qwen3:8b' },
+  { n: 'GLM-4.6-Air 9B', s: '9B · q4 · 6GB', need: 11, desc: '智谱开源：编码/Agent 见长', cmd: 'ollama run glm4.6-air:9b' },
+  { n: 'DeepSeek-R1 8B', s: '8B · q4 · 5GB', need: 10, desc: '蒸馏版推理模型：先想再答', cmd: 'ollama run deepseek-r1:8b' },
+  { n: 'Kimi-K3-Instruct 8B', s: '8B · q4 · 5GB', need: 10, desc: '月之暗面：超长上下文', cmd: 'ollama run kimi-k3:8b' },
+  { n: 'GLM-5-Air 14B', s: '14B · q4 · 9GB', need: 15, desc: '2026 旗舰小杯：推理+多模态', cmd: 'ollama run glm5-air:14b' },
+];
+let selected = null;
+function memory() {
+  const ram = +document.getElementById('ram').value || 8;
+  const vram = +document.getElementById('vram').value || 0;
+  const chip = document.getElementById('chip').value;
+  /* 可用 = Apple 统一内存×0.7 / NVIDIA 显存×0.9 / CPU 内存×0.6 */
+  if (chip.startsWith('Apple')) return { total: ram, usable: ram * 0.72, note: '统一内存（可分给 GPU）' };
+  if (chip.startsWith('NVIDIA')) return { total: ram, usable: Math.max(vram * 0.88, ram * 0.5), note: `显存 ${vram}GB` };
+  return { total: ram, usable: ram * 0.55, note: '纯 CPU（较慢）' };
+}
+function render() {
+  const m = memory();
+  const ok = MODELS.filter(x => x.need <= m.usable);
+  const v = document.getElementById('verdict');
+  if (!ok.length) {
+    v.className = 'verdict warn';
+    v.innerHTML = `<b>😅 你的配置跑不动量化模型</b>可用 ${m.usable.toFixed(0)}GB（${m.note}）。建议：先用云端大模型完成课程任务，或试试 1B 级玩具模型（ollama run qwen3:1.7b）。`;
+  } else {
+    v.className = 'verdict';
+    v.innerHTML = `<b>✅ 可以本地跑 ${ok.length} 个推荐模型</b>可用内存约 <b style="display:inline;font-size:14px">${m.usable.toFixed(0)}GB</b>（${m.note}）——最大可跑到 <b style="display:inline">${ok[ok.length - 1].n}</b>。速度预估：${m.note.includes('CPU') ? '约 3–8 字/秒' : '约 10–30 字/秒'}。`;
+  }
+  const box = document.getElementById('models');
+  box.innerHTML = '';
+  MODELS.forEach(x => {
+    const d = document.createElement('div');
+    const can = x.need <= m.usable;
+    d.className = 'model' + (can ? '' : ' off') + (selected === x.n ? ' on' : '');
+    d.style.opacity = can ? 1 : 0.45;
+    d.innerHTML = `<div class="mn">${x.n} ${can ? '' : '🔒'}</div><div class="ms">${x.s}</div><div class="need">${x.desc}</div><div class="need" style="color:${can ? 'var(--ok)' : 'var(--err)'}">${can ? '✓ 可运行' : `需要约 ${x.need}GB`}</div>`;
+    if (can) d.addEventListener('click', () => { selected = x.n; render(); });
+    box.append(d);
+  });
+  const cmdBox = document.getElementById('cmd');
+  const cmd = MODELS.find(x => x.n === selected)?.cmd || (ok[ok.length - 1]?.cmd || 'ollama run qwen3:1.7b');
+  cmdBox.innerHTML = `<span>$ ${cmd}</span><button class="btn sm" id="cp">📋 复制</button>`;
+  document.getElementById('cp').addEventListener('click', () => {
+    navigator.clipboard?.writeText(cmd);
+    document.getElementById('cp').textContent = '✅ 已复制';
+  });
+}
+['ram', 'vram', 'chip'].forEach(id => document.getElementById(id).addEventListener('input', render));
+render();
+</script>
+</body></html>

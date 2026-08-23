@@ -1,0 +1,183 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>AI 七十年交互时间轴</title>
+<link rel="stylesheet" href="../_shared/demo.css">
+<style>
+  .stage { flex:1; position:relative; overflow:hidden; }
+  canvas#tl { position:absolute; inset:0; width:100%; height:100%; }
+  .detail { position:absolute; right:14px; top:14px; width:min(300px, 40%); background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; box-shadow:0 6px 20px rgba(0,0,0,.12); font-size:12.5px; line-height:1.75; display:none; }
+  .detail .yr { font-family:var(--mono); color:var(--accent); font-weight:700; }
+  .detail .ti { font-weight:700; font-size:14px; margin:2px 0 4px; }
+  .detail .cat { display:inline-block; font-size:10.5px; padding:1px 8px; border-radius:9px; margin-bottom:6px; letter-spacing:.05em; }
+</style></head><body>
+<div class="demo-head"><span class="badge">互动</span><span class="t">AI 七十年时间轴</span><span class="s">横向拖动 / 滚轮缩放；点击年份节点展开详情；两条灰色带是两次"寒冬"</span></div>
+<div class="demo-body">
+  <div class="stage">
+    <canvas id="tl"></canvas>
+    <div class="detail" id="detail"></div>
+  </div>
+  <div class="demo-panel">
+    <div class="panel-title">时代滤镜</div>
+    <div class="tabs" id="filters"></div>
+    <div class="panel-title">三幕结构</div>
+    <div class="card" style="font-size:12.5px;color:var(--muted);line-height:1.8">
+      <b style="color:var(--text)">第一幕 1956–1974</b>：符号主义乐观期<br>
+      <b style="color:var(--text)">寒冬一 1974–1980</b>：组合爆炸 + 莱特希尔报告<br>
+      <b style="color:var(--text)">第二幕 1980–1987</b>：专家系统商业化<br>
+      <b style="color:var(--text)">寒冬二 1987–1993</b>：Lisp 机器崩盘<br>
+      <b style="color:var(--text)">第三幕 2012–今</b>：深度学习与大模型
+    </div>
+  </div>
+</div>
+<script type="module">
+import { fitCanvas, autoFit, css, PALETTE } from '../_shared/demo.js';
+
+const EVENTS = [
+  { y: 1943, t: '麦卡洛克-皮茨神经元', c: '奠基', d: '神经活动的逻辑演算：神经元可以做逻辑计算。连接主义的理论起点。' },
+  { y: 1950, t: '图灵《计算机器与智能》', c: '奠基', d: '提出模仿游戏（图灵测试）："机器能思考吗"从此有了可操作的问法。' },
+  { y: 1956, t: '达特茅斯会议', c: '奠基', d: '麦卡锡、明斯基、香农等人聚会两个月，"人工智能"得名，学科诞生。' },
+  { y: 1957, t: '感知机 Mark I', c: '符号期', d: '罗森布拉特造出第一台能学习的机器。《纽约时报》：它将"走路、说话、有意识"。' },
+  { y: 1958, t: 'LISP 语言', c: '符号期', d: '麦卡锡发明 LISP，此后三十年 AI 研究的母语。' },
+  { y: 1964, t: 'ELIZA', c: '符号期', d: '魏岑鲍姆的谈话程序模仿心理治疗师，第一次有人被机器"骗过"。' },
+  { y: 1965, t: 'DENDRAL 专家系统', c: '符号期', d: '第一个成功的知识型系统，推断分子结构。' },
+  { y: 1969, t: '《感知机》出版', c: '符号期', d: '明斯基与帕佩特证明单层感知机解不了异或，连接主义被冰封。' },
+  { y: 1970, t: '日语机器翻译失败', c: '寒冬前夜', d: '翻译质量灾难令资助方清醒，乐观承诺开始崩塌。' },
+  { y: 1973, t: '莱特希尔报告', c: '寒冬前夜', d: '英国政府对 AI 的严厉评估："该领域未能实现其宏大承诺"。经费断崖。' },
+  { y: 1974, t: '第一次寒冬开始', c: '寒冬', d: '1974–1980：DARPA 削减拨款，实验室关门，"AI"一词在申请书中都要回避。' },
+  { y: 1980, t: 'XCON 商用', c: '专家系统期', d: 'DEC 公司的订单配置系统年省 2500 万美元，AI 商业化元年。' },
+  { y: 1982, t: '日本第五代计算机计划', c: '专家系统期', d: '日本政府豪掷 4 亿美元押注符号推理，各国跟进军备竞赛。' },
+  { y: 1986, t: '反向传播复兴', c: '专家系统期', d: '鲁梅尔哈特、辛顿、威廉姆斯在 Nature 证明可训练多层网络。寒冬中埋下火种。' },
+  { y: 1987, t: 'Lisp 机器市场崩盘', c: '寒冬', d: '通用 PC 性能反超专用 Lisp 机，AI 硬件公司成批倒闭。第二次寒冬 1987–1993。' },
+  { y: 1989, t: 'LeCun 卷积网络识支票', c: '暗流', d: 'CNN 首次大规模商用（手写数字识别）。深学习的伏兵在寒冬中行军。' },
+  { y: 1997, t: '深蓝击败卡斯帕罗夫', c: '暗流', d: '暴力搜索 + 人工评估函数的胜利。"机器在人引以为傲的领域胜出"震动公众。' },
+  { y: 2006, t: '深度信念网络', c: '复兴前夜', d: '辛顿提出逐层预训练，"深度学习"一词重回舞台。' },
+  { y: 2011, t: 'Watson 赢得危险边缘', c: '复兴前夜', d: 'IBM 的问答系统战胜人类冠军，NLP 里程碑。' },
+  { y: 2012, t: 'AlexNet 惊艳 ImageNet', c: '深度学习期', d: '错误率 26%→15%。GPU+大数据+深度网络的合力首次亮相，第三次浪潮开幕。' },
+  { y: 2014, t: 'GAN 与 Seq2Seq', c: '深度学习期', d: '生成对抗网络让机器学会"无中生有"；序列到序列让机器翻译起飞。' },
+  { y: 2016, t: 'AlphaGo 击败李世石', c: '深度学习期', d: '深度网络 + 蒙特卡洛树搜索 + 自我对弈。围棋这座"十年后堡垒"提前陷落。' },
+  { y: 2017, t: 'Transformer 发表', c: '大模型期', d: '《Attention Is All You Need》。注意力架构此后统治 NLP、CV、音频与科学计算。' },
+  { y: 2018, t: 'BERT 与 GPT-1', c: '大模型期', d: '预训练+微调范式确立，"基础模型"时代开启。' },
+  { y: 2020, t: 'GPT-3 (1750亿参数)', c: '大模型期', d: '规模法则兑现：少样本学习涌现，写作/翻译/代码一体。' },
+  { y: 2022, t: 'ChatGPT 发布', c: '大模型期', d: 'RLHF 对齐让大模型"会说人话"。两个月用户破亿，史上最快。' },
+  { y: 2023, t: 'GPT-4 与开源浪潮', c: '大模型期', d: '多模态旗舰与 Llama/Qwen/GLM/DeepSeek 等开源权重模型并行，全球治理讨论升温。' },
+  { y: 2024, t: '推理模型元年', c: '推理期', d: 'OpenAI o1 与 DeepSeek-R1：强化学习直接奖励答对，长思维链自发涌现。Scaling 的接力棒从预训练传给后训练——"先想 30 秒再答"成为顶级模型的标配。' },
+  { y: 2025, t: 'Agent 与协议之年', c: '智能体期', d: 'MCP 成为智能体连接工具的事实标准（下载量破 9700 万），A2A 让智能体互相委派任务；两大协议入驻 Linux 基金会，ACP 并入 A2A。AI 从"聊天框"走进"工作流"。' },
+  { y: 2026, t: '世界模型与开源同台', c: '世界模型期', d: '视频生成模型（Veo 3.1 / 可灵 2.6 / Runway Gen-4.5）转向"预训练想象、微调行动"的世界模型；开源榜 DeepSeek V4-Pro、GLM 5.2、Qwen3.7 与闭源前沿正面竞争；8 月 2 日欧盟 AI 法案全面适用——你开学的时候，历史正在写。' },
+  { y: 2024, t: '诺奖与推理模型', c: '大模型期', d: 'AlphaFold 获诺贝尔化学奖；o1 类推理模型让"先想再答"成为新品类。' },
+];
+const CATS = {
+  '奠基': '#0f766e', '符号期': '#4338ca', '寒冬前夜': '#b45309', '寒冬': '#6b7280',
+  '专家系统期': '#4338ca', '暗流': '#0e7490', '复兴前夜': '#0e7490', '深度学习期': '#b4482b', '大模型期': '#be185d'
+};
+const WINTERS = [[1974, 1980], [1987, 1993]];
+
+const cv = document.getElementById('tl');
+const detail = document.getElementById('detail');
+let ctx = autoFit(cv, draw);
+let x0 = 1940, x1 = 2030, hover = -1, activeFilter = null;
+
+function X(year) { return 70 + (year - x0) / (x1 - x0) * (W() - 100); }
+function W() { return cv.getBoundingClientRect().width; }
+function H() { return cv.getBoundingClientRect().height; }
+
+function draw() {
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+  const muted = css('--muted'), border = css('--border'), text = css('--text'), surf = css('--surface');
+  /* 年份网格 */
+  ctx.strokeStyle = border; ctx.fillStyle = muted;
+  ctx.font = '10px ' + css('--mono') || '10px monospace';
+  for (let y = 1950; y <= 2030; y += 10) {
+    ctx.beginPath(); ctx.moveTo(X(y), 30); ctx.lineTo(X(y), h - 16); ctx.stroke();
+    ctx.fillText(String(y), X(y) - 12, h - 2);
+  }
+  /* 寒冬带 */
+  WINTERS.forEach(([a, b]) => {
+    ctx.fillStyle = 'rgba(120,113,108,.12)';
+    ctx.fillRect(X(a), 30, X(b) - X(a), h - 50);
+    ctx.fillStyle = muted; ctx.font = '11px sans-serif';
+    ctx.fillText('❄ 寒冬', X(a) + 6, 44);
+  });
+  /* 事件 */
+  EVENTS.forEach((e, i) => {
+    const x = X(e.y);
+    const lane = i % 3;
+    const y = 70 + lane * ((h - 100) / 3) + 20;
+    const c = CATS[e.c] || '#b4482b';
+    const dimmed = activeFilter && e.c !== activeFilter;
+    ctx.globalAlpha = dimmed ? 0.16 : 1;
+    ctx.strokeStyle = border;
+    ctx.beginPath(); ctx.moveTo(x, h - 16); ctx.lineTo(x, y + 14); ctx.stroke();
+    const r = i === hover ? 9 : 6;
+    ctx.fillStyle = i === hover ? c : surf;
+    ctx.strokeStyle = c; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 1;
+    if (x1 - x0 < 30 || i === hover) {
+      ctx.fillStyle = text; ctx.font = '11.5px sans-serif';
+      const label = e.y + ' ' + e.t;
+      const tw = ctx.measureText(label).width;
+      ctx.fillText(label, clampTxt(x + 12, 0, w - tw - 6), y + 4);
+    } else {
+      ctx.fillStyle = c; ctx.font = '10.5px sans-serif';
+      ctx.save(); ctx.translate(x + 3, y - 12); ctx.rotate(-0.35); ctx.fillText(String(e.y), 0, 0); ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  });
+  function clampTxt(v, a, b) { return Math.max(a, Math.min(b, v)); }
+}
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY > 0 ? 1.12 : 0.89;
+  const cx = x0 + (x1 - x0) * ((e.offsetX - 70) / (W() - 100));
+  x0 = cx - (cx - x0) * f; x1 = cx + (x1 - cx) * f;
+  x0 = Math.max(1940, x0); x1 = Math.min(2032, x1);
+  if (x1 - x0 < 6) x1 = x0 + 6;
+  draw();
+}, { passive: false });
+let dragging = false, lx = 0;
+cv.addEventListener('mousedown', e => { dragging = true; lx = e.offsetX; });
+addEventListener('mouseup', () => dragging = false);
+cv.addEventListener('mousemove', e => {
+  if (dragging) {
+    const dy = (e.offsetX - lx) / (W() - 100) * (x1 - x0);
+    x0 -= dy; x1 -= dy;
+    lx = e.offsetX;
+    if (x0 < 1940) { x1 += 1940 - x0; x0 = 1940; }
+    if (x1 > 2032) { x0 -= 2032 - x1; x1 = 2032; }
+    draw();
+  }
+  /* hover 检测 */
+  const r = cv.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  let hit = -1;
+  EVENTS.forEach((ev, i) => {
+    if (activeFilter && ev.c !== activeFilter) return;
+    const x = X(ev.y), lane = i % 3, y = 70 + lane * ((H() - 100) / 3) + 20;
+    if (Math.hypot(mx - x, my - y) < 12) hit = i;
+  });
+  if (hit !== hover) { hover = hit; draw(); cv.style.cursor = hit >= 0 ? 'pointer' : 'grab'; }
+  if (hit < 0) detail.style.display = 'none';
+});
+cv.addEventListener('click', () => {
+  if (hover < 0) return;
+  const e = EVENTS[hover];
+  const c = CATS[e.c];
+  detail.style.display = 'block';
+  detail.innerHTML = `<span class="yr">${e.y}</span> <span class="cat" style="background:${c}22;color:${c}">${e.c}</span>
+    <div class="ti">${e.t}</div><div style="color:var(--muted)">${e.d}</div>`;
+});
+/* 筛选 */
+const filters = document.getElementById('filters');
+[['全部', null], ['寒冬', '寒冬'], ['深度学习期', '深度学习期'], ['大模型期', '大模型期']].forEach(([name, cat], i) => {
+  const b = document.createElement('button');
+  b.textContent = name; if (i === 0) b.classList.add('on');
+  b.addEventListener('click', () => {
+    filters.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    activeFilter = cat;
+    draw();
+  });
+  filters.append(b);
+});
+</script>
+</body></html>
