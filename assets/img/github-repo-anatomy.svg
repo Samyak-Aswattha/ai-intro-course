@@ -1,0 +1,70 @@
+<svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'PingFang SC', 'Noto Sans SC', sans-serif">
+  <rect width="900" height="520" fill="#f7f5f1"/>
+
+  <!-- window chrome -->
+  <rect x="40" y="30" width="820" height="460" rx="14" fill="#ffffff" stroke="#cfc9bc" stroke-width="1.5"/>
+  <rect x="40" y="30" width="820" height="44" rx="14" fill="#efece6"/>
+  <rect x="40" y="60" width="820" height="14" fill="#efece6"/>
+  <circle cx="66" cy="52" r="6" fill="#e3dfd6"/>
+  <circle cx="86" cy="52" r="6" fill="#e3dfd6"/>
+  <circle cx="106" cy="52" r="6" fill="#e3dfd6"/>
+  <text x="450" y="57" text-anchor="middle" font-size="13" fill="#55524b">github.com/你的用户名/仓库名</text>
+
+  <!-- repo title row -->
+  <text x="66" y="104" font-size="18" font-weight="700" fill="#23211d">仓库名（Repository）</text>
+  <rect x="240" y="88" width="52" height="22" rx="11" fill="#f6e3dc" stroke="#b4482b" stroke-width="1"/>
+  <text x="266" y="103" text-anchor="middle" font-size="11" fill="#b4482b">Public</text>
+
+  <!-- branch + commit strip -->
+  <rect x="66" y="122" width="150" height="28" rx="6" fill="#efece6"/>
+  <text x="80" y="141" font-size="12" fill="#23211d">⑂ main</text>
+  <rect x="230" y="122" width="180" height="28" rx="6" fill="#efece6"/>
+  <text x="244" y="141" font-size="12" fill="#23211d">⏱ 12 Commits</text>
+
+  <!-- file tree -->
+  <rect x="66" y="164" width="380" height="230" rx="8" fill="#fbfaf8" stroke="#e3dfd6"/>
+  <g font-size="13" fill="#23211d">
+    <text x="84" y="190">📁 assets/</text>
+    <text x="84" y="216">📁 docs/</text>
+    <text x="84" y="242">📄 index.html</text>
+    <text x="84" y="268">📄 style.css</text>
+    <text x="84" y="294" font-weight="700">📄 README.md</text>
+    <text x="84" y="320">📄 .gitignore</text>
+  </g>
+  <g font-size="12" fill="#8a8578" text-anchor="end">
+    <text x="428" y="190">更新素材</text>
+    <text x="428" y="216">补充教程</text>
+    <text x="428" y="242">修复导航栏</text>
+    <text x="428" y="268">调整配色</text>
+    <text x="428" y="294">首次提交</text>
+    <text x="428" y="320">忽略缓存文件</text>
+  </g>
+  <line x1="66" y1="332" x2="446" y2="332" stroke="#e3dfd6"/>
+  <text x="84" y="358" font-size="12" fill="#55524b">每一行 = 一次 commit：谁、什么时候、改了什么</text>
+  <text x="84" y="380" font-size="12" fill="#55524b">— 项目从第一天到今天的完整日记</text>
+
+  <!-- README preview -->
+  <rect x="466" y="164" width="374" height="230" rx="8" fill="#fbfaf8" stroke="#e3dfd6"/>
+  <text x="484" y="190" font-size="13" font-weight="700" fill="#23211d"># README.md</text>
+  <text x="484" y="214" font-size="12" fill="#55524b">这个项目是做什么的</text>
+  <text x="484" y="234" font-size="12" fill="#55524b">## 怎么用</text>
+  <rect x="484" y="244" width="330" height="20" rx="4" fill="#efece6"/>
+  <text x="492" y="258" font-size="11" fill="#55524b" font-family="monospace">git clone https://github.com/...</text>
+  <text x="484" y="288" font-size="12" fill="#55524b">## 目录结构说明……</text>
+  <text x="484" y="308" font-size="12" fill="#55524b">## 贡献方式……</text>
+  <line x1="466" y1="330" x2="840" y2="330" stroke="#e3dfd6"/>
+  <text x="484" y="356" font-size="12" fill="#55524b">陌生人打开一个仓库，先看的就是它</text>
+  <text x="484" y="378" font-size="12" fill="#55524b">——写清楚，别人才找得到门</text>
+
+  <!-- bottom row: fork / star / issue -->
+  <g font-size="12" fill="#23211d">
+    <rect x="66" y="418" width="130" height="30" rx="6" fill="#efece6"/>
+    <text x="131" y="437" text-anchor="middle">⑂ Fork：拷一份自己改</text>
+    <rect x="210" y="418" width="130" height="30" rx="6" fill="#efece6"/>
+    <text x="275" y="437" text-anchor="middle">☆ Star：收藏标记</text>
+    <rect x="354" y="418" width="150" height="30" rx="6" fill="#efece6"/>
+    <text x="429" y="437" text-anchor="middle">◔ Issue：提问题/报 bug</text>
+    <rect x="518" y="418" width="180" height="30" rx="6" fill="#efece6"/>
+    <text x="608" y="437" text-anchor="middle">⇄ Pull Request：提交修改建议</text>
+  </g>
+</svg>

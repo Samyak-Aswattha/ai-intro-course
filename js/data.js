@@ -95,14 +95,13 @@ export const CHAPTERS = [
     ]
   },
   {
-    id: '09', module: 'practice', num: '第九章', title: '实战：与 AI 一起工作', hours: 10,
-    brief: '零代码与低代码的实践之路：把大模型用起来、看透它、甚至搭一个自己的。',
+    id: '09', module: 'practice', num: '第九章', title: '实战：与 AI 一起工作', hours: 8,
+    brief: '从怎么说话、怎么托付、怎么查资料，到自己的第一个仓库——把大模型用起来，也看清什么时候不该用。',
     sections: [
-      { id: 'prompt', title: '提示词工程', desc: '把话说清楚的艺术：角色、上下文、示例与思维链。', demos: ['prompt-lab'] },
-      { id: 'agent', title: '手搓一个 Agent', desc: '大模型 + 记忆 + 工具 = 智能体；规划与反思循环。', demos: ['agent-workflow', 'agent-protocols'] },
-      { id: 'knowledge-base', title: '搭建本地知识库', desc: 'RAG 三步曲：切分、检索、生成——让 AI 读你的资料。', demos: ['rag-explainer'] },
-      { id: 'local-llm', title: '部署本地大模型', desc: 'Ollama 与开源模型：一台笔记本跑起自己的 AI。', demos: ['llm-local-guide'] },
-      { id: 'nn-coding', title: '神经网络编程初体验', desc: 'Teachable Machine 与 TensorFlow Playground：不写代码也能训练模型。', demos: ['nn-playground-guide'] },
+      { id: 'prompt', title: '怎么跟 AI 打交道', desc: '乔哈里视窗：先搞清楚你和 AI 处在哪种信息状态，技法才有意义。', demos: ['prompt-lab'] },
+      { id: 'vibe-coding', title: 'Vibe Coding 与挽具工程', desc: 'Agent 还是 Agentic？从许愿到挽具：2026 年人人在谈的新词，到底是什么。', demos: ['agent-workflow'] },
+      { id: 'knowledge-base', title: '知识库：从 RAG 到 ima', desc: '让 AI 读你的资料，而不是凭印象编——原理 + 腾讯 ima 实操。', demos: ['rag-explainer'] },
+      { id: 'github-basics', title: 'GitHub 入门实操', desc: '仓库、提交、README：程序员的协作语言，你也用得上。', demos: [] },
       { id: 'contest', title: 'AI 创作比赛', desc: '赛制、评分维度、往届佳作与创作方法论。', demos: ['contest-judge'] }
     ]
   }
