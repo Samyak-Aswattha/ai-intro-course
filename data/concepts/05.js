@@ -31,7 +31,7 @@ export default {
       ],
       further: [
         { type: 'paper', title: 'He et al. (2015). Deep Residual Learning（ResNet）', desc: '残差连接的原始论文，引用量 20 万+', href: 'https://arxiv.org/abs/1512.03385' },
-        { type: 'video', title: '李宏毅：Why Deep Learning?', desc: '深度经济学的风趣讲解', href: 'https://www.bilibili.com/video/BV1JV411t7ow' }
+        { type: 'book', title: 'Michael Nielsen：《神经网络与深度学习》第五章 · 为什么深度网络难训练', desc: '梯度消失的可视化推导，与本节残差连接前后呼应的免费在线教科书（英文）', href: 'http://neuralnetworksanddeeplearning.com/chap5.html' }
       ]
     },
 
@@ -74,7 +74,7 @@ export default {
       further: [
         { type: 'paper', title: 'Hubel & Wiesel (1962). Receptive fields of cat visual cortex', desc: 'CNN 的生物学起点（诺贝尔奖工作）', href: 'https://www.jphysiol.org/content/148/3/574' },
         { type: 'paper', title: 'Krizhevsky et al. (2012). ImageNet Classification with Deep CNNs', desc: 'AlexNet 论文，深度学习时代的开幕词', href: 'https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf' },
-        { type: 'paper', title: '鲍平磊《殊途同归：生物视觉与人工视觉》', desc: '课程指定阅读', href: '#' },
+        { type: 'paper', title: 'Yamins & DiCarlo (2016). Using Goal-Driven Deep Learning Models to Understand Sensory Cortex', desc: 'CNN 与视觉皮层"殊途同归"的现代实证研究，Nature Neuroscience（英文）', href: 'https://pubmed.ncbi.nlm.nih.gov/26906502/' },
         { type: 'course', title: '斯坦福 CS231n 课程讲义（Karpathy 参与编写）', desc: '反向传播、优化算法、卷积网络的官方课程笔记，公式直给、几乎不靠比喻——第四、五章都用得上（英文）', href: 'https://cs231n.github.io/' }
       ]
     },
@@ -107,7 +107,7 @@ export default {
       ],
       further: [
         { type: 'paper', title: 'Hochreiter & Schmidhuber (1997). Long Short-Term Memory', desc: 'LSTM 原始论文', href: 'https://www.bioinf.jku.at/publications/older/2604.pdf' },
-        { type: 'paper', title: 'Sutskever et al. (2014). Sequence to Sequence Learning', desc: '课程藏书中的"开创性文章"原件', href: 'https://arxiv.org/abs/1409.3215' },
+        { type: 'paper', title: 'Sutskever et al. (2014). Sequence to Sequence Learning', desc: '机器翻译从"手写规则"走向"端到端学习"的转折点论文', href: 'https://arxiv.org/abs/1409.3215' },
         { type: 'video', title: 'Chris Olah: Understanding LSTM Networks（图解长文）', desc: '全网引用最多的 LSTM 图解', href: 'https://colah.github.io/posts/2015-08-Understanding-LSTMs/' }
       ]
     },

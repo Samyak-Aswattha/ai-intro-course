@@ -133,7 +133,6 @@ export default {
         { type: 'book', title: 'Brian Christian《The Alignment Problem》（对齐问题）', desc: '本节全景的书本版，叙事极佳（有中译）', href: 'https://book.douban.com/subject/35489832/' },
         { type: 'paper', title: 'Amodei et al. (2016). Concrete Problems in AI Safety', desc: '规格博弈等概念的原始框架论文', href: 'https://arxiv.org/abs/1606.06565' },
         { type: 'video', title: 'StatQuest: Reinforcement Learning with Human Feedback, Clearly Explained!!!', desc: '把 RLHF 每一步画出来讲清楚，零跳步骤——第三章"强化学习"那节的公式，在这里能看到它们怎么被用来对齐一个大模型（英文）', href: 'https://statquest.org/reinforcement-learning-with-human-feedback-clearly-explained/' },
-        { type: 'paper', title: '祝韬《ChatGPT 会带来什么影响》（课程藏书）', desc: '中文世界较早的系统性影响分析', href: '#' }
       ]
     }
   }

@@ -111,7 +111,7 @@ export default {
       further: [
         { type: 'paper', title: 'Kaplan et al. (2020). Scaling Laws for Neural Language Models', desc: '规模法则原始论文', href: 'https://arxiv.org/abs/2001.08361' },
         { type: 'paper', title: 'Bender et al. (2021). On the Dangers of Stochastic Parrots', desc: '"随机鹦鹉"檄文，必读的反方视角', href: 'https://dl.acm.org/doi/10.1145/3442188.3445922' },
-        { type: 'paper', title: '《大语言模型工作原理教程》（课程自编讲义）', desc: '见课程素材目录', href: '#' },
+        { type: 'link', title: 'Jay Alammar: The Illustrated GPT-2', desc: '把 token、注意力、自回归生成画成一张张图——零门槛看懂本节"下一个词预测"的全部机制（英文）', href: 'https://jalammar.github.io/illustrated-gpt2/' },
         { type: 'link', title: 'Sebastian Raschka：LLM Training: RLHF and Its Alternatives', desc: '把预训练→微调→RLHF 这条流水线拆开逐步讲清楚，还对比了 ChatGPT 与 Llama 2 的不同做法（英文）', href: 'https://magazine.sebastianraschka.com/p/llm-training-rlhf-and-its-alternatives' },
         { type: 'link', title: 'Sebastian Raschka：Understanding Reasoning LLMs', desc: 'o1/R1 这类推理模型到底在训练阶段多做了什么，配合本节"思维链剧场"演示一起看（英文）', href: 'https://magazine.sebastianraschka.com/p/understanding-reasoning-llms' }
       ]
@@ -146,7 +146,7 @@ export default {
       ],
       further: [
         { type: 'paper', title: 'Goodfellow et al. (2014). Generative Adversarial Networks', desc: '酒馆白板点子的正式论文', href: 'https://arxiv.org/abs/1406.2661' },
-        { type: 'paper', title: '李嫣然《ChatGPT 的未解之谜》（课程讲座）', desc: '生成模型与理解的边界，课程素材', href: '#' },
+        { type: 'link', title: 'Yao Fu et al.: How does GPT Obtain its Ability?', desc: '追溯推理、代码理解、指令跟随三种能力分别来自预训练的哪个阶段——上面这些"未解之谜"追问的深度版答案（英文）', href: 'https://yaofu.notion.site/How-does-GPT-Obtain-its-Ability-Tracing-Emergent-Abilities-of-Language-Models-to-their-Sources-b9a57ac0fcf74f30a1ab9e3e36fa1dc1' },
         { type: 'paper', title: 'Goodfellow, NIPS 2016 Tutorial: Generative Adversarial Networks', desc: 'GAN 发明人亲自撰写的教程，附三道带答案的练习题——从直觉到公式的权威版本（英文）', href: 'https://arxiv.org/abs/1701.00160' }
       ]
     },
@@ -220,7 +220,7 @@ export default {
       ],
       further: [
         { type: 'paper', title: 'Radford et al. (2021). Learning Transferable Visual Models (CLIP)', desc: '图文对齐的奠基论文', href: 'https://arxiv.org/abs/2103.00020' },
-        { type: 'paper', title: '曼宁（2022）NLP 历史和展望（课程藏书中文稿）', desc: '斯坦福 NLP 宗师的百年回顾演讲', href: '#' }
+        { type: 'paper', title: 'Manning, C. (2022). Human Language Understanding & Reasoning', desc: '斯坦福 NLP 宗师在《代达罗斯》期刊上的百年回顾与展望，短小精悍、面向公众（英文）', href: 'https://www.amacad.org/publication/daedalus/human-language-understanding-reasoning' }
       ]
     }
   }

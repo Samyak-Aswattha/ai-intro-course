@@ -167,7 +167,7 @@ export default {
       ],
       further: [
         { type: 'tool', title: 'Teachable Machine', desc: '本节主工具', href: 'https://teachablemachine.withgoogle.com' },
-        { type: 'book', title: '《神经网络与深度学习 · 三小时入门》（课程藏书）', desc: '想看代码的同学从这里开始', href: '#' }
+        { type: 'course', title: 'Kaggle Learn: Intro to Deep Learning', desc: '免费、零门槛、写代码就能跑的深度学习入门微课程——想看代码的同学从这里开始（英文）', href: 'https://www.kaggle.com/learn/intro-to-deep-learning' }
       ]
     },
 
@@ -217,7 +217,7 @@ export default {
       ],
       further: [
         { type: 'link', title: '开篇寄语（课程原创互动页）', desc: '学期开始时错过的话，现在补上——关于这门课想带给你的东西', href: 'assets/interactive/开篇寄语.html' },
-        { type: 'paper', title: '《"人工智能+"引爆新质生产力革命》（课程藏书）', desc: '产业视角的最后一块拼图', href: '#' }
+        { type: 'link', title: 'State of AI Report（年度报告）', desc: '全球最具影响力的 AI 产业年度盘点：研究、工业、政治、安全四个维度——产业视角的最后一块拼图（英文）', href: 'https://www.stateof.ai/' }
       ]
     }
   }

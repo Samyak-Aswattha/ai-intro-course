@@ -40,8 +40,8 @@ export default {
         { q: 'ChatGPT 是哪种学习？', a: '三段式：预训练是自监督（从被遮住的词学语言规律，可视为监督学习的变体）；微调是监督（人对答案）；对齐是强化（人类偏好当奖励）。一个模型，三种范式接力。' }
       ],
       further: [
-        { type: 'video', title: '李宏毅机器学习第一讲：机器学习基本概念', desc: '三小时版课程的开篇，与本节完全对应', href: 'https://www.bilibili.com/video/BV1JV411t7ow' },
-        { type: 'book', title: '周志华《机器学习》第一章', desc: '西瓜书开篇，术语的权威来源', href: '#' }
+        { type: 'course', title: '李宏毅机器学习课程合集（B 站中字）', desc: '本节对应"机器学习基本概念"一讲，中文世界最受欢迎的机器学习入门课', href: 'https://www.bilibili.com/video/BV1JE411K7RR/' },
+        { type: 'book', title: '周志华《机器学习》（西瓜书）', desc: '中文机器学习教材的事实标准，第一章即本节术语的权威来源', href: 'https://book.douban.com/subject/26708119/' }
       ]
     },
 
@@ -114,7 +114,7 @@ export default {
       ],
       further: [
         { type: 'video', title: 'StatQuest：决策树与随机森林', desc: '最友好的统计科普频道（有中字）', href: 'https://www.youtube.com/watch?v=7VeUPuFGhgk' },
-        { type: 'book', title: '周志华《机器学习》第 4 章 · 决策树', desc: '信息增益的严格推导', href: '#' }
+        { type: 'book', title: '周志华《机器学习》第 4 章 · 决策树', desc: '信息增益的严格推导', href: 'https://book.douban.com/subject/26708119/' }
       ]
     },
 
@@ -148,7 +148,7 @@ export default {
       ],
       further: [
         { type: 'tool', title: 'Naftali Harris 的 K-means 交互演示', desc: '经典网页，可与本实验室对照玩', href: 'https://www.naftaliharris.com/blog/visualizing-k-means-clustering/' },
-        { type: 'paper', title: '物理符号系统能思考吗（debate graph）', desc: '课程素材：关于"发现结构"的哲学辩论图', href: '#' }
+        { type: 'link', title: 'scikit-learn: Comparing different clustering algorithms', desc: '同一批数据形状下 K-means、DBSCAN、谱聚类等九种算法并排跑一遍——"类是发现的还是发明的"，换个算法看看答案会不会变（英文）', href: 'https://scikit-learn.org/stable/auto_examples/cluster/plot_cluster_comparison.html' }
       ]
     },
 
@@ -238,7 +238,7 @@ export default {
         { q: '交叉验证的 k 一般取多少？', a: '常用 5 或 10。k 越大估计越稳但计算越贵。数据极大时（百万级）干脆留一小份验证集即可，因为随机切分的方差已经很小。' }
       ],
       further: [
-        { type: 'video', title: '李宏毅：Where does the error come from?', desc: '偏差方差两分法的经典讲解', href: 'https://www.bilibili.com/video/BV1JV411t7ow' },
+        { type: 'video', title: 'StatQuest: Machine Learning Fundamentals: Bias and Variance', desc: '十分钟讲透"打靶"直觉，与下一节偏差-方差实验室正好互补（英文）', href: 'https://www.youtube.com/watch?v=EuBBz3bI-aA' },
         { type: 'paper', title: '课程题库 · 过拟合专题', desc: '判断题第 12–20 题集中考查本节概念', href: '../../quiz/practice.html?ch=03' }
       ]
     },

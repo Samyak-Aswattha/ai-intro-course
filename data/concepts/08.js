@@ -28,8 +28,8 @@ export default {
         { q: 'AI 生成内容有版权吗？', a: '各法域结论不一：中国已有判例承认含人类独创性投入的 AIGC 受保护（如"春风送来了诗意"案）；美国版权局倾向纯 AI 生成不受保护。共同底线：**纯提示词一键生成，很难主张著作权；深度的人为选择与修改，才有立足点**。' }
       ],
       further: [
-        { type: 'paper', title: '《物理符号系统能思考吗》debate graph（课程素材）', desc: '符号系统与诗意之争的论证地图', href: '#' },
-        { type: 'book', title: '《AI 启示录：理解和应对人工智能浪潮》（课程指定阅读）', desc: '第八、九两章的宏观背景', href: '#' }
+        { type: 'paper', title: 'Boden, M. (1998). Creativity and Artificial Intelligence', desc: '计算创造力研究的经典论文：机器的"新颖组合"能否算作诗意（英文）', href: 'https://www.sciencedirect.com/science/article/pii/S0004370298000551' },
+        { type: 'book', title: 'Mustafa Suleyman《The Coming Wave》', desc: 'DeepMind 联合创始人写给公众的 AI 浪潮全景书，第八、九两章的宏观背景（有中译本）', href: 'https://the-coming-wave.com/' }
       ]
     },
 
@@ -96,7 +96,7 @@ export default {
       ],
       further: [
         { type: 'paper', title: 'Dreyfus, H. (1972/1992). What Computers Still Can\'t Do', desc: '哲学对抗 AI 的经典（新版后记有趣）', href: 'https://mitpress.mit.edu/9780262540674/what-computers-still-cant-do/' },
-        { type: 'paper', title: '《CAN COMPUTERS THINK? 计算机和大脑的异同比较》（课程藏书）', desc: '冯·诺依曼遗作的当代回响', href: '#' }
+        { type: 'book', title: 'von Neumann, J. (1958). The Computer and the Brain', desc: '冯·诺依曼的遗作：计算机与大脑异同比较最早、也最权威的版本（有中译本）', href: 'https://book.douban.com/subject/7053116/' }
       ]
     }
   }

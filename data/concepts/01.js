@@ -141,8 +141,8 @@ export default {
         { q: 'AlphaGo 和深蓝有什么本质区别？', a: '深蓝（1997）主要靠暴力搜索 + 人工棋谱知识；AlphaGo（2016）靠深度网络从人类棋谱学习局面评估，再靠自我对弈强化学习超越人类。一个被"喂规则"，一个自己"学规则"。' }
       ],
       further: [
-        { type: 'paper', title: 'A Brief History of AI: How to Prevent Another Winter（课程藏书中英对照版）', desc: '本课指定的 AI 简史长文，含两次寒冬数据', href: '#'},
-        { type: 'video', title: '李宏毅《人工智能导论》第一讲', desc: '台大李宏毅教授的经典开场（中文）', href: 'https://speech.ee.ntu.edu.tw/~hylee/ml/2023-spring.php' }
+        { type: 'book', title: 'Nilsson, N. (2010). The Quest for Artificial Intelligence', desc: 'AI 先驱亲撰的权威通史，707 页免费全文，斯坦福官方托管（英文）', href: 'https://ai.stanford.edu/~nilsson/QAI/qai.pdf' },
+        { type: 'video', title: 'Crash Course Computer Science 第 34 集：Machine Learning & AI', desc: '面向大众的十几分钟浓缩史，B 站有中字（与本节"计算的前世今生"共用同一合集）', href: 'https://www.bilibili.com/video/BV1EW411u7th' }
       ]
     },
 
@@ -181,7 +181,7 @@ export default {
         { q: '图灵机和现在的计算机是一回事吗？', a: '在计算能力上等价（丘奇-图灵论题），任何计算机能算的图灵机都能算，反之亦然。区别是速度与存储：图灵机是理想化的数学对象，不考虑效率——而效率恰恰是工程 AI 的生死线。' }
       ],
       further: [
-        { type: 'book', title: '矢泽久雄《程序是怎样跑起来的》', desc: '课程藏书，从二进制到程序的图解之旅', href: '#' },
+        { type: 'course', title: 'Nand2Tetris（From Nand to Tetris）', desc: '从一个与非门开始，一路搭到能跑俄罗斯方块的完整计算机——全球公认最佳"从零造计算机"免费课程，本节内容的实操加长版（英文）', href: 'https://www.nand2tetris.org/' },
         { type: 'video', title: 'CrashCourse Computer Science（计算机科学速成课）', desc: '第 5–10 集完美对应本节内容，B 站有中字', href: 'https://www.bilibili.com/video/BV1EW411u7th' }
       ]
     },
@@ -216,7 +216,7 @@ export default {
       ],
       further: [
         { type: 'paper', title: 'Sutton, R. (2019). The Bitter Lesson', desc: '只有两页，AI 圈被引用最多的短文之一', href: 'http://www.incompleteideas.net/IncIdeas/BitterLesson.html' },
-        { type: 'paper', title: '进化算法的算法进化（课程原创讲义）', desc: '从达尔文到遗传算法：行为主义范式的另一条暗线', href: '#' }
+        { type: 'paper', title: 'Brooks, R. (1991). Intelligence without Representation', desc: '行为主义范式的奠基论文：布鲁克斯论证造一个会走路的机器人不需要先造一个会推理的大脑，MIT 官方全文（英文）', href: 'https://people.csail.mit.edu/brooks/papers/representation.pdf' }
       ]
     }
   }
