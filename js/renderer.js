@@ -102,7 +102,7 @@ function demoBlock(b, depth) {
       <div class="d-ico">${b.ico || '🧪'}</div>
       <div><div class="d-title">${inline(b.title)}</div>${b.desc ? `<div class="d-sub">${inline(b.desc)}</div>` : ''}</div>
       ${badge}
-      <a class="d-open icon-btn" href="${b.src}" target="_blank" title="新标签页打开（可全屏）">⤢</a>
+      <a class="d-open icon-btn" href="${b.src}" target="_blank" title="新标签页打开（可全屏）" aria-label="在新标签页打开该演示">⤢</a>
     </div>
     <div class="frame-wrap">
       <div class="frame-poster">

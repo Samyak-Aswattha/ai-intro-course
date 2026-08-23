@@ -30,13 +30,13 @@ function buildShell() {
   const topbar = document.createElement('header');
   topbar.className = 'topbar';
   topbar.innerHTML = `
-    <button class="icon-btn menu-btn" id="menuBtn" title="目录">☰</button>
+    <button class="icon-btn menu-btn" id="menuBtn" title="目录" aria-label="打开目录">☰</button>
     <a class="brand" href="${P('index.html')}"><span class="logo">智</span><span class="b-t">人工智能导论</span><span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:0 6px;margin-left:2px">v2.1</span></a>
     <nav class="crumbs" id="crumbs"></nav>
     <div class="topbar-actions">
-      <button class="searchbox" id="searchBtn">🔍 搜索课程…<kbd>⌘K</kbd></button>
-      <a class="icon-btn" href="${P('notes.html')}" title="我的笔记">🗒️</a>
-      <button class="icon-btn" id="themeBtn" title="切换深浅主题">🌙</button>
+      <button class="searchbox" id="searchBtn" aria-label="搜索课程">🔍 搜索课程…<kbd>⌘K</kbd></button>
+      <a class="icon-btn" href="${P('notes.html')}" title="我的笔记" aria-label="我的笔记">🗒️</a>
+      <button class="icon-btn" id="themeBtn" title="切换深浅主题" aria-label="切换深浅主题">🌙</button>
     </div>`;
   document.body.prepend(topbar);
 
@@ -106,7 +106,7 @@ function buildShell() {
 
   /* 返回顶部 + 阅读进度条 */
   const bar = document.createElement('div'); bar.className = 'read-progress'; document.body.append(bar);
-  const top = document.createElement('button'); top.className = 'to-top'; top.textContent = '↑'; top.title = '回到顶部';
+  const top = document.createElement('button'); top.className = 'to-top'; top.textContent = '↑'; top.title = '回到顶部'; top.setAttribute('aria-label', '回到顶部');
   document.body.append(top);
   top.addEventListener('click', () => scrollTo({ top: 0, behavior: 'smooth' }));
   addEventListener('scroll', () => {
@@ -371,7 +371,7 @@ function modal(title, bodyHtml, footHtml = '') {
   const mask = document.createElement('div');
   mask.className = 'modal-mask';
   mask.innerHTML = `<div class="modal">
-    <div class="mo-head"><div class="mo-title">${title}</div><button class="icon-btn mo-close">✕</button></div>
+    <div class="mo-head"><div class="mo-title">${title}</div><button class="icon-btn mo-close" title="关闭" aria-label="关闭">✕</button></div>
     <div class="mo-body">${bodyHtml}</div>
     ${footHtml ? `<div class="mo-foot">${footHtml}</div>` : ''}
   </div>`;
@@ -455,8 +455,8 @@ function buildAiPanel() {
     <div class="ai-head">
       <div class="ai-avatar">🤖</div>
       <div><div class="ai-name">AI 课程助教</div><div class="ai-sub" id="aiSub">随时问我这门课的任何问题</div></div>
-      <button class="icon-btn ai-settings" id="aiCfgBtn" title="设置">⚙️</button>
-      <button class="icon-btn" id="aiCloseBtn" title="收起">✕</button>
+      <button class="icon-btn ai-settings" id="aiCfgBtn" title="设置" aria-label="AI 助教设置">⚙️</button>
+      <button class="icon-btn" id="aiCloseBtn" title="收起" aria-label="收起 AI 助教">✕</button>
     </div>
     <div class="ai-msgs" id="aiMsgs">
       <div class="ai-empty">
@@ -472,7 +472,7 @@ function buildAiPanel() {
     </div>
     <div class="ai-input-row">
       <textarea id="aiInput" placeholder="输入问题，Enter 发送…" rows="1"></textarea>
-      <button class="ai-send" id="aiSend">➤</button>
+      <button class="ai-send" id="aiSend" title="发送" aria-label="发送">➤</button>
     </div>`;
   document.body.append(fab, panel);
   fab.addEventListener('click', openAiPanel);
@@ -620,7 +620,7 @@ function openAiSettings() {
 function initLightbox() {
   const lb = document.createElement('div');
   lb.className = 'lightbox';
-  lb.innerHTML = '<button class="lb-close">✕</button><img alt=""><div class="lb-cap"></div>';
+  lb.innerHTML = '<button class="lb-close" title="关闭大图" aria-label="关闭大图">✕</button><img alt=""><div class="lb-cap"></div>';
   document.body.append(lb);
   const img = $('img', lb), cap = $('.lb-cap', lb);
   lb.addEventListener('click', e => { if (e.target === lb || e.target.classList.contains('lb-close')) lb.classList.remove('show'); });

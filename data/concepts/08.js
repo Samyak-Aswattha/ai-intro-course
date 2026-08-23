@@ -62,7 +62,7 @@ export default {
         { q: '"看不懂当代艺术"和"看不懂 AI 艺术"是一回事吗？', a: '不同。前者是观念门槛（作品的意义在语境里），后者常是机制门槛（不知道它在做什么）。本节的两个实验室就是为拆掉机制门槛设计的——拆完之后你会发现，剩下的问题全是老问题：什么是好？什么是真？谁说了算？' }
       ],
       further: [
-        { type: 'video', title: '课程视频素材：《AI 名画入境》《AI 电影第一名》', desc: '感受生成媒介的可能性与怪异', href: 'assets/video/ai-painting-entry.mp4' },
+        { type: 'video', title: '课程视频素材：《AI 名画入境》', desc: '感受生成媒介的可能性与怪异', href: 'assets/video/ai-painting-entry.mp4' },
         { type: 'paper', title: 'Gatys et al. (2015). A Neural Algorithm of Artistic Style', desc: '风格迁移的开山论文（本实验室的原理）', href: 'https://arxiv.org/abs/1508.06576' }
       ]
     },
