@@ -43,14 +43,6 @@ const SHOW = [
   { i: '🛰️', t: 'Agent 协议星图', d: 'MCP/A2A：智能体的血管系统', u: P('demos', 'agent-protocols'), c: 'var(--m-practice)', b: '新·2026' },
 ];
 /* 2026 前沿动态条（源自 2026-08 实况检索） */
-const NEWS26 = [
-  { d: '2026-08-02', t: '欧盟《人工智能法案》全面适用：聊天机器人须声明非人类、AI 内容须标注、深度伪造须标识', tag: '监管' },
-  { d: '2026-08', t: '开源榜：DeepSeek V4-Pro 编码 80.6% / 推理 90.1% 登顶，GLM 5.2、Qwen3.7、Kimi K3 紧随其后', tag: '开源' },
-  { d: '2026', t: 'MCP 协议下载量破 9700 万、约 78% 企业采用；与 A2A 一并入驻 Linux 基金会', tag: 'Agent' },
-  { d: '2026', t: '世界模型元年：Veo 3.1 / 可灵 2.6 / Runway Gen-4.5——「预训练想象、微调行动」范式成型', tag: '前沿' },
-  { d: '2026-08', t: '大模型座次：OpenAI、DeepSeek、Qwen、Grok、GLM、Claude——中国开源实验室已与闭源前沿同台竞技', tag: '格局' },
-];
-
 content.innerHTML = `
 <section class="hero3">
   <div class="hero3-grid">
@@ -91,13 +83,6 @@ content.innerHTML = `
     ${PEeks.map(p => `<a class="peek-item" href="${p.u}"><span class="pi">${p.i}</span><span><span class="pt">${p.t}</span><br><span class="pd">${p.d}</span></span></a>`).join('')}
   </div>
 </section>
-
-<div class="ticker" id="ticker26">
-  <span class="tk-label">📡 2026 前沿快报</span>
-  <div class="tk-view"><div class="tk-track" id="tkTrack">
-    ${NEWS26.map(n => `<span class="tk-item"><i>${n.d}</i><b>${n.tag}</b>${n.t}</span>`).join('')}
-  </div></div>
-</div>
 
 <section id="map">
   <div class="band-head"><h2>课程地图</h2><span class="bh-sub">四大模块 · 建议按序学习，也可随时跳转</span></div>
@@ -248,18 +233,4 @@ scanReveal();
     tabs.append(b);
   });
   requestAnimationFrame(loop);
-})();
-
-/* ================= 2026 动态条滚动 ================= */
-(function ticker() {
-  const track = document.getElementById('tkTrack');
-  if (!track) return;
-  track.innerHTML += track.innerHTML;
-  let x = 0;
-  (function tick() {
-    x -= 0.5;
-    if (-x > track.scrollWidth / 2) x = 0;
-    track.style.transform = 'translateX(' + x + 'px)';
-    requestAnimationFrame(tick);
-  })();
 })();
