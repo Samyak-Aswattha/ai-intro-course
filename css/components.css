@@ -472,7 +472,8 @@ mark.hl:hover { filter: brightness(.96); }
 .sec-card .sc-demos .d-tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--bg-soft); border: 1px solid var(--border); color: var(--text-2); }
 
 .feature-band { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin: 34px 0; }
-.feature-item { padding: 18px 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+.feature-item { display: block; width: 100%; padding: 18px 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); text-align: left; text-decoration: none; color: inherit; font: inherit; cursor: pointer; transition: border-color .15s, transform .15s; }
+.feature-item:hover { border-color: var(--accent); transform: translateY(-2px); }
 .feature-item .f-ico { font-size: 24px; margin-bottom: 8px; }
 .feature-item .f-name { font-weight: 700; font-size: 15px; font-family: var(--font-display); }
 .feature-item .f-desc { font-size: 13px; color: var(--text-2); line-height: 1.7; margin-top: 4px; }

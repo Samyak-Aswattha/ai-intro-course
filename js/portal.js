@@ -117,12 +117,12 @@ content.innerHTML = `
 <section>
   <div class="band-head"><h2>这门课怎么"玩"</h2><span class="bh-sub">六个让理解可被检验的设计</span></div>
   <div class="feature-band reveal">
-    <div class="feature-item"><div class="f-ico">🧪</div><div class="f-name">可运行实验室</div><div class="f-desc">核心算法在浏览器真实执行——每个实验室都有"故意弄坏"开关，亲眼看它崩坏，才懂每个部件为什么必要。</div></div>
-    <div class="feature-item"><div class="f-ico">🧊</div><div class="f-name">3D 可视化</div><div class="f-desc">神经网络、损失曲面、词嵌入星系、Transformer 解剖……可旋转漫游的立体世界。</div></div>
-    <div class="feature-item"><div class="f-ico">🎯</div><div class="f-name">误解驱动题库</div><div class="f-desc">错误选项对应真实误解——选错时你会看到自己"错在哪"，错误本身成为教材。</div></div>
-    <div class="feature-item"><div class="f-ico">🔁</div><div class="f-name">间隔重复</div><div class="f-desc">答错的题按 1/2/4/8…天周期自动重现，直到真正记住。进度本地保存。</div></div>
-    <div class="feature-item"><div class="f-ico">🖍️</div><div class="f-name">划线提问包</div><div class="f-desc">对任意文字划线：不懂/重要/存疑/深挖——一键生成提问包，粘给任意大模型。</div></div>
-    <div class="feature-item"><div class="f-ico">🤖</div><div class="f-name">AI 课程助教</div><div class="f-desc">右下角随时唤起，配 Key 即可在线问答；不配也能用 FAQ 检索与提问包。</div></div>
+    <a class="feature-item" href="#demos"><div class="f-ico">🧪</div><div class="f-name">可运行实验室</div><div class="f-desc">核心算法在浏览器真实执行——每个实验室都有"故意弄坏"开关，亲眼看它崩坏，才懂每个部件为什么必要。</div></a>
+    <a class="feature-item" href="#demos"><div class="f-ico">🧊</div><div class="f-name">3D 可视化</div><div class="f-desc">神经网络、损失曲面、词嵌入星系、Transformer 解剖……可旋转漫游的立体世界。</div></a>
+    <a class="feature-item" href="${P('quiz', 'index.html')}"><div class="f-ico">🎯</div><div class="f-name">误解驱动题库</div><div class="f-desc">错误选项对应真实误解——选错时你会看到自己"错在哪"，错误本身成为教材。</div></a>
+    <a class="feature-item" href="${P('quiz', 'review.html')}"><div class="f-ico">🔁</div><div class="f-name">间隔重复</div><div class="f-desc">答错的题按 1/2/4/8…天周期自动重现，直到真正记住。进度本地保存。</div></a>
+    <a class="feature-item" href="${P('notes.html')}"><div class="f-ico">🖍️</div><div class="f-name">划线提问包</div><div class="f-desc">对任意文字划线：不懂/重要/存疑/深挖——一键生成提问包，粘给任意大模型。</div></a>
+    <button type="button" class="feature-item" id="featureAiBtn"><div class="f-ico">🤖</div><div class="f-name">AI 课程助教</div><div class="f-desc">右下角随时唤起，配 Key 即可在线问答；不配也能用 FAQ 检索与提问包。</div></button>
   </div>
 </section>
 
@@ -144,6 +144,7 @@ content.innerHTML = `
   <span><a href="${P('docs', '使用与部署说明.md')}" download>使用说明下载</a></span>
 </footer>`;
 scanReveal();
+document.getElementById('featureAiBtn')?.addEventListener('click', () => document.getElementById('aiFab')?.click());
 
 /* ================= Hero 现场 NN 实验室（真实训练） ================= */
 (function liveLab() {
