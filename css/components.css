@@ -249,6 +249,15 @@ term:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 .q-input:focus { outline: none; border-color: var(--mod, var(--accent)); }
 
+.q-answer {
+  display: block; width: calc(100% - 40px); margin: 0 20px 14px; min-height: 96px; padding: 12px 15px;
+  border: 1.5px solid var(--border); border-radius: var(--radius); background: var(--surface-2);
+  font: inherit; font-size: 14.5px; line-height: 1.7; color: var(--text); resize: vertical;
+  transition: border var(--dur) var(--ease);
+}
+.q-answer:focus { outline: none; border-color: var(--mod, var(--accent)); }
+.q-answer::placeholder { color: var(--muted); }
+
 /* 开放题参考答案 */
 .ref-answer { margin: 0 20px 18px; }
 .ref-answer summary {

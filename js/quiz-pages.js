@@ -41,7 +41,8 @@ function qCard(item, idx) {
       <input class="q-input" placeholder="填入答案（多空用逗号分隔）">
       <button class="btn sm check-btn">检查</button></div>`;
   } else if (item.type === 'open') {
-    inner += `<div class="q-hints">
+    inner += `<textarea class="q-answer" placeholder="先写下你自己的答案——哪怕只是几行提纲，写出来才算真的想过一遍，再往下看参考答案。">${esc(store.draft.get(item.id))}</textarea>
+    <div class="q-hints">
       <button class="hint-btn">💡 提示（${(item.hints || []).length} 级）</button>
       <div class="hint-body" hidden></div>
     </div>
@@ -112,6 +113,14 @@ function wire(card, item) {
     btn.addEventListener('click', check);
     input.addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
   } else if (item.type === 'open') {
+    const answerBox = $('.q-answer', card);
+    if (answerBox) {
+      let saveT;
+      answerBox.addEventListener('input', () => {
+        clearTimeout(saveT);
+        saveT = setTimeout(() => store.draft.set(item.id, answerBox.value.trim()), 400);
+      });
+    }
     const hintBtn = $('.hint-btn', card), hintBody = $('.hint-body', card);
     let hintLv = 0;
     hintBtn.addEventListener('click', () => {

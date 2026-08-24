@@ -134,6 +134,16 @@ export const notes = {
   }
 };
 
+/* ---------- 简答/论述题草稿：{ [qId]: text } ---------- */
+export const draft = {
+  get(qId) { return read('draft', {})[qId] || ''; },
+  set(qId, text) {
+    const all = read('draft', {});
+    if (text) all[qId] = text; else delete all[qId];
+    write('draft', all);
+  }
+};
+
 /* ---------- AI 问答设置 ---------- */
 export const aiCfg = {
   all() {
